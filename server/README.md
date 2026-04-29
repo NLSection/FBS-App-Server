@@ -1,42 +1,52 @@
 # FBS Server (Synology / Docker)
 
-Headless deployment of the FBS Next.js app, with the SQLite database on a NAS volume.
-The Tauri client stays usable in two modes: **Lokaal** (own SQLite on the PC, current behaviour) or **Externe NAS** (no local DB, the client points at this server).
+Headless deployment of the FBS Next.js app with the SQLite database on a NAS volume.
+The Tauri client can run in **Lokaal** mode (own SQLite on the PC, default) or **Externe NAS** mode (no local DB, the client points at this server).
 
-## Build the image
+The image is built and published automatically by the `FBS-App-Server` repo's GitHub Actions on every push, multi-arch (`linux/amd64` + `linux/arm64`):
 
-On a development machine with Docker installed:
+- `ghcr.io/nlsection/fbs-app-server:latest`
+- `ghcr.io/nlsection/fbs-app-server:vX.Y.Z` (tagged releases)
 
-```powershell
-.\scripts\build-server.ps1
-```
+## Deploy on Synology DSM (Container Manager, DSM 7.2)
 
-This produces `dist\fbs-server-<version>.tar.gz` next to the repo. Move that file to the NAS (Synology File Station, SCP, etc.).
-
-## Deploy on Synology DSM
-
-Tested on DSM 7.2 with Container Manager.
-
-1. **Create the project folder**, e.g. `/volume2/Docker/FBS/`, and a `data/` subfolder inside it (`/volume2/Docker/FBS/data/`). The DB lives at `<project>/data/fbs.db`. Set ownership of `data/` to UID 1001 (the in-container `fbs` user) — easiest via SSH:
+1. **Maak de projectstructuur op de NAS**:
+   ```
+   /volume2/Docker/FBS/
+   └── data/        (← komt fbs.db in te leven, moet schrijfbaar zijn voor UID 1001)
+   ```
+   Via File Station: maak de mappen aan. Daarna via Control Panel → Shared Folder → `Docker` → Edit → Permissions: zorg dat de container-user (UID 1001) read+write heeft op `data/`. Simpelste alternatief: tijdelijk "Read+Write voor Everyone" op `data/`, of via SSH:
    ```sh
-   sudo mkdir -p /volume2/Docker/FBS/data
    sudo chown -R 1001:1001 /volume2/Docker/FBS/data
    ```
-2. **Import the image**: Container Manager → Image → Add → Add from file → select `fbs-server-<version>.tar.gz`.
-3. **Deploy via compose**:
-   - Container Manager → Project → Create
-   - Path: `/volume2/Docker/FBS/`
-   - Source: paste the contents of `docker-compose.yml`
-   - Build / Start
-4. **Verify**: browse to `http://<nas-ip>:3210` from any device on the LAN. First boot creates `fbs.db` and runs all migrations up to the bundled `SCHEMA_VERSION`.
-5. **Health**: `http://<nas-ip>:3210/api/health` returns `{ ok: true, schemaVersion: <n> }`.
 
-## Update the image
+2. **Plaats `docker-compose.yml`** in `/volume2/Docker/FBS/`. Inhoud staat naast deze README in de repo; copy-paste of upload via File Station.
 
-Same flow: build a fresh `.tar.gz`, replace the image in Container Manager, restart the project. The bind-mounted `fbs.db` is preserved across container rebuilds — migrations run on boot.
+3. **Container Manager → Project → Create**:
+   - Project name: `fbs`
+   - Path: `/volume2/Docker/FBS`
+   - Source: "Use existing docker-compose.yml" (Container Manager pakt het automatisch op)
+   - Klik "Build" → de NAS pullt de image van GHCR (~50 MB) en start de container
 
-## Notes for this phase
+4. **Verifieer**:
+   - Browse to `http://<nas-ip>:3210/api/health` — verwacht: `{"ok":true,"app":"fbs","schemaVersion":80}`
+   - Browse to `http://<nas-ip>:3210/` — FBS UI laadt; eerste boot maakt `fbs.db` aan en draait migraties tot `SCHEMA_VERSION`.
 
-- **No authentication yet.** Keep the LAN port closed to the outside world; do not port-forward 3210 yet. Phase 2 adds password-based auth before any external exposure.
-- **Schema-version mismatch** between client and server is a hard failure. If you upgrade the Tauri client to a newer release, also rebuild and redeploy this image (and vice versa).
-- **Backups**: `fbs.db` is a single SQLite file in the bind-mounted folder; the existing in-app backup feature works against it identically. Snapshot the host folder for offsite copies.
+## Updaten
+
+Bij elke push naar de Server-repo bouwt GHA een nieuwe image. Op de NAS:
+
+- Container Manager → Project `fbs` → Action → "Reset/Build" (pulls nieuwste image dankzij `pull_policy: always` in compose)
+- Of via Schedule Task voor automatische updates: command `docker compose -f /volume2/Docker/FBS/docker-compose.yml pull && docker compose -f /volume2/Docker/FBS/docker-compose.yml up -d`
+
+Bind-mounted `fbs.db` blijft staan, migraties draaien on-boot.
+
+## Belangrijke nota's bij deze fase (1)
+
+- **Geen authenticatie** — port 3210 niet extern openen. LAN-only tot fase 2 (password-gate) klaar is.
+- **Backups** — `fbs.db` is één SQLite-bestand in `data/`. De ingebouwde backup-feature van FBS werkt identiek; voor offsite ook gewoon de hele `data/` map periodiek snapshotten/synchroniseren.
+- **Logs** — Container Manager → Container `fbs-server` → Log toont stdout/stderr. Bij issues de healthcheck is verbose.
+
+## Tauri-client koppelen
+
+In de Tauri-app: Instellingen → **Database-locatie** → "Externe NAS" → URL `http://<nas-ip>:3210` → "Test verbinding" (verwacht "Verbonden — FBS-server, schema vN") → "Opslaan & herstart". Daarna opent de app de NAS-UI ipv de lokale.
