@@ -1,0 +1,27 @@
+# FBS server — Synology Container Manager / docker-compose definition.
+# Drop this file into the project folder (e.g. /volume2/Docker/FBS) and create
+# a "data" subfolder next to it; the DB will live in <project>/data/fbs.db.
+# The image is pulled from GitHub Container Registry — no local build needed.
+services:
+  fbs:
+    image: ghcr.io/nlsection/fbs-app-server:latest
+    container_name: fbs-server
+    restart: unless-stopped
+    pull_policy: always
+    ports:
+      - "3210:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      NODE_ENV: production
+      DB_PATH: /data/fbs.db
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

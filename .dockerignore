@@ -1,0 +1,47 @@
+# Build artifacts and dependencies (re-installed inside the image)
+node_modules
+.next
+dist
+out
+
+# Tauri shell — not used for the server build
+src-tauri
+
+# VCS / CI / editor metadata
+.git
+.github
+.vscode
+.idea
+.claude
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local databases and backups
+fbs.db
+fbs.db-*
+fbs-dev-empty.db
+fbs-dev-empty.db-*
+backups
+
+# Defense in depth — these are not synced to Main, but if the build is run
+# from Dev directly we don't want them in the image either.
+SESSION.md
+CLAUDE.md
+ROADMAP.html
+.env
+.env.local
+.env.development
+.env.production
+.hc3-tmp
+.hc3-credentials.local
+*.fqa
+
+# Build artefacts
+*.tar
+*.tar.gz

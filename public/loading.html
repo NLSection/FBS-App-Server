@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FBS</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #0f1117;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+    color: #e8eaf6;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 20px;
+  }
+  .fbs-logo {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 4px;
+  }
+  .app-name {
+    font-size: 22px;
+    font-weight: 700;
+    color: #e8eaf6;
+    line-height: 1;
+    letter-spacing: -0.3px;
+  }
+  .app-afkorting {
+    font-size: 13px;
+    font-weight: 500;
+    color: #5c7cfa;
+    margin-top: 4px;
+    line-height: 1;
+  }
+  .made-by {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: 6px;
+  }
+  .made-by-logo {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    display: block;
+    opacity: 0.7;
+  }
+  .made-by-text {
+    font-size: 11px;
+    color: #3e4460;
+    line-height: 1;
+  }
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #1a1d27;
+    border-top-color: #5c7cfa;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <svg class="fbs-logo" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#5c7cfa"/>
+        <stop offset="100%" stop-color="#9b6ffa"/>
+      </linearGradient>
+    </defs>
+    <rect x="1" y="1" width="38" height="38" rx="10" fill="url(#g)"/>
+    <rect x="8" y="22" width="6" height="10" rx="1.5" fill="white" opacity="0.7"/>
+    <rect x="17" y="16" width="6" height="16" rx="1.5" fill="white" opacity="0.85"/>
+    <rect x="26" y="10" width="6" height="22" rx="1.5" fill="white"/>
+    <path d="M8 20 L14 14 L22 18 L32 8" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+  </svg>
+  <span class="app-name">Financieel Beheer Systeem</span>
+  <span class="app-afkorting">FBS</span>
+  <div class="made-by">
+    <img class="made-by-logo" src="S-Logo.png" alt="" draggable="false" />
+    <span class="made-by-text">by Section Labs</span>
+  </div>
+  <div class="spinner" style="margin-top: 16px;"></div>
+</div>
+<script>
+  // Drie-laags vangnet om van loading.html naar de app te navigeren:
+  // 1. Rust roept window.navigate() aan (werkt op WebView2/Windows)
+  // 2. Rust emit `fbs://server-ready` (werkt op snellere Macs waar de
+  //    event-listener tijdig actief is)
+  // 3. Pull-poll naar `get_app_url` command (vangnet voor trage Macs waar
+  //    de emit afgevuurd wordt vóór de listener attach is)
+  // Allemaal idempotent: eerste die slaagt wint, rest ziet `navigated=true`
+  // en is no-op.
+  (function () {
+    var navigated = false;
+    function go(url) {
+      if (navigated || !url) return;
+      navigated = true;
+      window.location.replace(url);
+    }
+
+    // Laag 2: event-listener
+    function attachListener() {
+      if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.listen) {
+        window.__TAURI__.event.listen('fbs://server-ready', function (e) {
+          go(e && e.payload);
+        });
+        return true;
+      }
+      return false;
+    }
+    if (!attachListener()) {
+      var tries = 0;
+      var iv = setInterval(function () {
+        tries++;
+        if (attachListener() || tries > 100) clearInterval(iv);
+      }, 50);
+    }
+
+    // Laag 3: pull-poll. invoke is altijd beschikbaar zodra __TAURI__ er
+    // is — en in tegenstelling tot events kennen invokes geen "te laat"
+    // probleem. Stop zodra navigatie is gestart.
+    var pollTries = 0;
+    var pollIv = setInterval(function () {
+      pollTries++;
+      if (navigated || pollTries > 300) { clearInterval(pollIv); return; } // 60s ceiling
+      var invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+      if (!invoke) return;
+      invoke('get_app_url').then(function (url) { if (url) go(url); }).catch(function () { /* */ });
+    }, 200);
+  })();
+</script>
+</body>
+</html>

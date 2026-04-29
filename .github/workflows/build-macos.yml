@@ -1,0 +1,400 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag waar de .dmg naar wordt geüpload (bv. v0.2.2) — Windows .exe MOET al in deze release staan'
+        required: true
+        type: string
+      kanaal:
+        description: 'Doel-repo: main (publieke release) of test (test-kanaal)'
+        required: true
+        type: choice
+        options:
+          - main
+          - test
+        default: main
+      architectuur:
+        description: 'Welke architectuur bouwen'
+        required: false
+        type: choice
+        options:
+          - beide
+          - intel
+          - arm
+          - universal
+        default: beide
+
+concurrency:
+  group: build-macos-${{ inputs.kanaal }}-${{ inputs.tag }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '20.18.1'
+  TARGET_REPO: ${{ inputs.kanaal == 'test' && 'NLSection/FBS-App-Test' || 'NLSection/FBS-App-Main' }}
+
+jobs:
+  pre-flight:
+    name: Pre-flight checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Dev repo
+        uses: actions/checkout@v4
+
+      - name: Verify package.json version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${{ inputs.tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Versie mismatch — package.json=$PKG_VERSION, tag=$TAG_VERSION."
+            exit 1
+          fi
+
+      - name: Verify src-tauri/tauri.conf.json version matches tag
+        run: |
+          TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          TAG_VERSION="${{ inputs.tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          if [ "$TAURI_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Versie mismatch — tauri.conf.json=$TAURI_VERSION, tag=$TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Verify GitHub Release exists in ${{ env.TARGET_REPO }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if ! gh release view "${{ inputs.tag }}" --repo "$TARGET_REPO" >/dev/null 2>&1; then
+            echo "::error::Geen GitHub Release gevonden voor tag ${{ inputs.tag }} in $TARGET_REPO."
+            exit 1
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Aparte job per architectuur — parallel uitgevoerd. Elk produceert een
+  # eigen DMG met de arch als suffix. Voorkomt universal/lipo-issues.
+  # ─────────────────────────────────────────────────────────────────────────
+  build-universal:
+    name: Build macOS universal (Intel + Apple Silicon)
+    needs: pre-flight
+    if: inputs.architectuur == 'universal'
+    runs-on: macos-13
+    env:
+      TARGET_INTEL: x86_64-apple-darwin
+      TARGET_ARM: aarch64-apple-darwin
+    steps:
+      - name: Checkout Dev repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cargo registry/git cache (geen target/)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: macos-v2-universal
+          cache-targets: 'false'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download Node.js macOS universal binary
+        run: |
+          curl -sSL -o node-arm.tar.gz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-arm64.tar.gz"
+          mkdir -p node-bin-arm
+          tar -xzf node-arm.tar.gz -C node-bin-arm --strip-components=1
+          curl -sSL -o node-x64.tar.gz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-x64.tar.gz"
+          mkdir -p node-bin-x64
+          tar -xzf node-x64.tar.gz -C node-bin-x64 --strip-components=1
+          lipo -create -output src-tauri/node-universal-apple-darwin \
+            node-bin-arm/bin/node \
+            node-bin-x64/bin/node
+          chmod +x src-tauri/node-universal-apple-darwin
+          file src-tauri/node-universal-apple-darwin
+
+      - name: Bundle Next.js standalone
+        run: |
+          chmod +x scripts/bundle-app.sh
+          ./scripts/bundle-app.sh
+
+      - name: Rename bundle identifier voor macOS
+        run: |
+          jq '.identifier = "nl.sectionlabs.fbs"' src-tauri/tauri.conf.json > tauri.conf.tmp
+          mv tauri.conf.tmp src-tauri/tauri.conf.json
+
+      - name: Clean extended attributes + ad-hoc codesign node binary
+        run: |
+          xattr -rc src-tauri || true
+          codesign --force --sign - src-tauri/node-universal-apple-darwin
+          codesign -dv src-tauri/node-universal-apple-darwin 2>&1 || true
+
+      - name: Build Tauri app (universal-apple-darwin) — alleen DMG + updater
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: '-'
+          CARGO_INCREMENTAL: '0'
+        run: npx tauri build --target universal-apple-darwin --bundles dmg,updater --verbose
+
+      - name: List build artifacts
+        if: always()
+        run: |
+          echo "=== bundle/dmg ==="
+          ls -la src-tauri/target/universal-apple-darwin/release/bundle/dmg/ 2>/dev/null || echo "(geen dmg dir)"
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-universal-${{ inputs.tag }}
+          path: |
+            src-tauri/target/universal-apple-darwin/release/build/**/*.log
+            ~/.npm/_logs/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload .dmg to GitHub Release in ${{ env.TARGET_REPO }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          repository: ${{ env.TARGET_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          files: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg.sig
+          fail_on_unmatched_files: true
+
+  build-intel:
+    name: Build macOS x86_64 (Intel)
+    needs: pre-flight
+    if: inputs.architectuur == 'beide' || inputs.architectuur == 'intel'
+    runs-on: macos-13
+    env:
+      TARGET: x86_64-apple-darwin
+      NODE_TARBALL: darwin-x64
+    steps:
+      - name: Checkout Dev repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Cargo registry/git cache (geen target/)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: macos-v2-${{ env.TARGET }}
+          cache-targets: 'false'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download Node.js macOS binary voor ${{ env.TARGET }}
+        run: |
+          curl -sSL -o node.tar.gz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${{ env.NODE_TARBALL }}.tar.gz"
+          mkdir -p node-bin
+          tar -xzf node.tar.gz -C node-bin --strip-components=1
+          cp node-bin/bin/node src-tauri/node-${{ env.TARGET }}
+          chmod +x src-tauri/node-${{ env.TARGET }}
+          file src-tauri/node-${{ env.TARGET }}
+
+      - name: Bundle Next.js standalone
+        run: |
+          chmod +x scripts/bundle-app.sh
+          ./scripts/bundle-app.sh
+
+      - name: Rename bundle identifier voor macOS (vermijd .app suffix clash)
+        run: |
+          jq '.identifier = "nl.sectionlabs.fbs"' src-tauri/tauri.conf.json > tauri.conf.tmp
+          mv tauri.conf.tmp src-tauri/tauri.conf.json
+          grep identifier src-tauri/tauri.conf.json
+
+      - name: Clean extended attributes + ad-hoc codesign node binary
+        run: |
+          xattr -rc src-tauri || true
+          codesign --force --sign - src-tauri/node-${{ env.TARGET }}
+          codesign -dv src-tauri/node-${{ env.TARGET }} 2>&1 || true
+
+      - name: Diagnostiek release-dir voor build
+        run: |
+          TARGET_BIN="src-tauri/target/${{ env.TARGET }}/release/app"
+          echo "=== Bestaat app binary al? ==="
+          if [ -f "$TARGET_BIN" ]; then
+            echo "JA — bestand aanwezig:"
+            ls -la "$TARGET_BIN"
+            ls -la@ "$TARGET_BIN" 2>/dev/null || true
+            echo "chflags:"
+            ls -lO "$TARGET_BIN" 2>/dev/null || true
+            echo "Forceer verwijdering:"
+            sudo rm -f "$TARGET_BIN" && echo "Verwijderd" || echo "Verwijdering mislukt!"
+          else
+            echo "NEE — geen bestaand app binary"
+          fi
+
+      - name: Build Tauri app (${{ env.TARGET }}) — alleen DMG + updater
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: '-'
+          CARGO_INCREMENTAL: '0'
+        run: npx tauri build --target ${{ env.TARGET }} --bundles dmg,updater --verbose
+
+      - name: List build artifacts
+        if: always()
+        run: |
+          echo "=== bundle/dmg ==="
+          ls -la src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/ 2>/dev/null || echo "(geen dmg dir)"
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ env.TARGET }}-${{ inputs.tag }}
+          path: |
+            src-tauri/target/${{ env.TARGET }}/release/build/**/*.log
+            ~/.npm/_logs/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload .dmg to GitHub Release in ${{ env.TARGET_REPO }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          repository: ${{ env.TARGET_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          files: |
+            src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/*.dmg.sig
+          fail_on_unmatched_files: true
+
+  build-arm:
+    name: Build macOS aarch64 (Apple Silicon)
+    needs: pre-flight
+    if: inputs.architectuur == 'beide' || inputs.architectuur == 'arm'
+    runs-on: macos-13
+    env:
+      TARGET: aarch64-apple-darwin
+      NODE_TARBALL: darwin-arm64
+    steps:
+      - name: Checkout Dev repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+
+      - name: Cargo registry/git cache (geen target/)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: macos-v2-${{ env.TARGET }}
+          cache-targets: 'false'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download Node.js macOS binary voor ${{ env.TARGET }}
+        run: |
+          curl -sSL -o node.tar.gz "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${{ env.NODE_TARBALL }}.tar.gz"
+          mkdir -p node-bin
+          tar -xzf node.tar.gz -C node-bin --strip-components=1
+          cp node-bin/bin/node src-tauri/node-${{ env.TARGET }}
+          chmod +x src-tauri/node-${{ env.TARGET }}
+          file src-tauri/node-${{ env.TARGET }}
+
+      - name: Bundle Next.js standalone
+        run: |
+          chmod +x scripts/bundle-app.sh
+          ./scripts/bundle-app.sh
+
+      - name: Rename bundle identifier voor macOS (vermijd .app suffix clash)
+        run: |
+          jq '.identifier = "nl.sectionlabs.fbs"' src-tauri/tauri.conf.json > tauri.conf.tmp
+          mv tauri.conf.tmp src-tauri/tauri.conf.json
+          grep identifier src-tauri/tauri.conf.json
+
+      - name: Clean extended attributes + ad-hoc codesign node binary
+        run: |
+          xattr -rc src-tauri || true
+          codesign --force --sign - src-tauri/node-${{ env.TARGET }}
+          codesign -dv src-tauri/node-${{ env.TARGET }} 2>&1 || true
+
+      - name: Diagnostiek release-dir voor build
+        run: |
+          TARGET_BIN="src-tauri/target/${{ env.TARGET }}/release/app"
+          echo "=== Bestaat app binary al? ==="
+          if [ -f "$TARGET_BIN" ]; then
+            echo "JA — bestand aanwezig:"
+            ls -la "$TARGET_BIN"
+            ls -la@ "$TARGET_BIN" 2>/dev/null || true
+            echo "chflags:"
+            ls -lO "$TARGET_BIN" 2>/dev/null || true
+            echo "Forceer verwijdering:"
+            sudo rm -f "$TARGET_BIN" && echo "Verwijderd" || echo "Verwijdering mislukt!"
+          else
+            echo "NEE — geen bestaand app binary"
+          fi
+
+      - name: Build Tauri app (${{ env.TARGET }}) — alleen DMG + updater
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: '-'
+          CARGO_INCREMENTAL: '0'
+        run: npx tauri build --target ${{ env.TARGET }} --bundles dmg,updater --verbose
+
+      - name: List build artifacts
+        if: always()
+        run: |
+          echo "=== bundle/dmg ==="
+          ls -la src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/ 2>/dev/null || echo "(geen dmg dir)"
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ env.TARGET }}-${{ inputs.tag }}
+          path: |
+            src-tauri/target/${{ env.TARGET }}/release/build/**/*.log
+            ~/.npm/_logs/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload .dmg to GitHub Release in ${{ env.TARGET_REPO }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          repository: ${{ env.TARGET_REPO }}
+          token: ${{ secrets.RELEASE_TOKEN }}
+          files: |
+            src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ env.TARGET }}/release/bundle/dmg/*.dmg.sig
+          fail_on_unmatched_files: true

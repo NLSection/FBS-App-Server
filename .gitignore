@@ -1,0 +1,75 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# database
+fbs.db
+fbs.db-shm
+fbs.db-wal
+fbs-dev-empty.db
+fbs-dev-empty.db-shm
+fbs-dev-empty.db-wal
+
+# backup bestanden (alleen root-map, niet app/api/backup/)
+/backup/
+
+# persoonlijke configuratie (legacy — nu in SQLite)
+# config/matchConfig.json
+
+# SPK build
+spk-build/
+*.spk
+
+# Tauri generated bundles
+src-tauri/binaries/
+src-tauri/app/
+
+# Build script met credentials
+build.ps1
+
+# Claude Code interne state
+.claude/scheduled_tasks.lock
+diagnose-broertje.txt
+
+# HC3L credentials (lokaal, nooit committen)
+.hc3-credentials.local
+.hc3-tmp/
