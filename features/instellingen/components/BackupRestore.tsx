@@ -90,10 +90,16 @@ export default function BackupRestore() {
   // Apparaat-identificatie + multi-device zichtbaarheid
   const [andereApparaten, setAndereApparaten] = useState<{ apparaat_id: string; apparaat_naam: string | null; minuten_geleden: number; actief: boolean; is_eigen?: boolean }[]>([]);
 
+  // Initiële bundle-load fout (mount-tijd) — toont een banner als de hele
+  // page-state niet geladen kon worden. Refresh-helpers (heartbeats/pending/
+  // lijst) loggen alleen naar console: dat is opzettelijk, want falen daar
+  // is niet kritiek voor de UI (oude data blijft zichtbaar).
+  const [bundleLaadFout, setBundleLaadFout] = useState<string | null>(null);
+
   function laadHeartbeats() {
     fetch('/api/heartbeats').then(r => r.ok ? r.json() : null).then((d: { apparaten: typeof andereApparaten } | null) => {
       if (d) setAndereApparaten(d.apparaten ?? []);
-    }).catch(() => {});
+    }).catch(err => { console.warn('heartbeats laden mislukt:', err); });
   }
 
   async function checkExternConfig() {
@@ -104,7 +110,10 @@ export default function BackupRestore() {
         setExternConfigBestaat(d.exists);
         setExternConfigHint(d.hint);
       }
-    } catch { /* extern niet bereikbaar */ }
+    } catch (err) {
+      // Extern niet bereikbaar — geen blocker voor de page, alleen log voor debug.
+      console.warn('extern-config check mislukt:', err);
+    }
   }
 
   function laadPending() {
@@ -115,27 +124,30 @@ export default function BackupRestore() {
         setTimeout(() => setPendingHighlight(false), 3000);
         setTimeout(() => document.getElementById('pending-extern')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
       }
-    }).catch(() => {});
+    }).catch(err => { console.warn('pending-extern laden mislukt:', err); });
   }
 
   function refreshLaatsteBackup() {
     fetch('/api/backup/lijst?bron=lokaal').then(r => r.ok ? r.json() : null).then((d: { bestanden: { naam: string; datum: string; grootte: number }[] } | null) => {
       if (d?.bestanden?.length) setLaatsteBackup(d.bestanden[0]);
-    }).catch(() => {});
+    }).catch(err => { console.warn('laatste backup laden mislukt:', err); });
   }
 
   useEffect(() => {
     // Eén bundle-fetch ipv 6 losse mount-calls. Mutaties + refresh blijven
     // wel via de individuele endpoints lopen.
-    fetch('/api/instellingen/backup-bundle').then(r => r.ok ? r.json() : null).then((d: {
+    fetch('/api/instellingen/backup-bundle').then(async r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }).then((d: {
       instellingen: { backupBewaarDagen: number; backupExternPad: string | null; backupExternInterval: number };
       encryptie: { ingesteld: boolean; hint: string | null };
       laatsteBackup: { naam: string; datum: string; grootte: number } | null;
       pending: { naam: string; grootte: number; datum: string }[];
       externConfig: { exists: boolean; hint: string | null } | null;
       heartbeats: { apparaten: typeof andereApparaten } | null;
-    } | null) => {
-      if (!d) return;
+    }) => {
+      setBundleLaadFout(null);
       setBewaarDagen(d.instellingen.backupBewaarDagen ?? 7);
       setExternPad(d.instellingen.backupExternPad ?? '');
       setExternInterval(d.instellingen.backupExternInterval ?? 60);
@@ -153,7 +165,10 @@ export default function BackupRestore() {
         setExternConfigHint(d.externConfig.hint);
       }
       if (d.heartbeats) setAndereApparaten(d.heartbeats.apparaten ?? []);
-    }).catch(() => {});
+    }).catch(err => {
+      console.error('backup-bundle laden mislukt:', err);
+      setBundleLaadFout(err instanceof Error ? err.message : String(err));
+    });
 
     const heartbeatTimer = setInterval(() => { laadHeartbeats(); }, 30_000);
 
@@ -457,6 +472,14 @@ export default function BackupRestore() {
         <p className="section-title" style={{ margin: 0 }}>Backup &amp; Restore</p>
         <MiniTourKnop tourId="backup" type="instelling" />
       </div>
+      {bundleLaadFout && (
+        <div style={{ background: 'var(--red-dim, #5a2424)', border: '1px solid var(--red, #d73a49)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--text-h)' }}>
+          <strong>Backup-instellingen konden niet geladen worden:</strong> {bundleLaadFout}.{' '}
+          <button type="button" onClick={() => window.location.reload()} style={{ background: 'none', border: 'none', color: 'var(--accent)', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 13 }}>
+            Pagina herladen
+          </button>
+        </div>
+      )}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
         <div style={{ background: 'var(--accent-dim)', padding: '10px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-h)', margin: 0 }}>Backup &amp; Restore</p>
