@@ -1,5 +1,7 @@
 # FBS server — Synology Container Manager / docker-compose.
-# Drop in /volume2/Docker/FBS/ next to a writable data/ subfolder.
+# Gebruik een named volume voor de DB — Docker beheert het volume zelf,
+# geen handmatige mkdir nodig op de host. Toegang tot fbs.db loopt via
+# /var/lib/docker/volumes/fbs_db/_data/ of via een container-shell.
 version: "3.8"
 
 services:
@@ -10,7 +12,7 @@ services:
     ports:
       - "3210:3000"
     volumes:
-      - ./data:/data
+      - fbs_db:/data
     environment:
       - NODE_ENV=production
       - DB_PATH=/data/fbs.db
@@ -20,3 +22,6 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+volumes:
+  fbs_db:
