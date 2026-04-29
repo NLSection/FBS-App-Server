@@ -1,7 +1,10 @@
 # FBS server — Synology Container Manager / docker-compose.
-# Gebruik een named volume voor de DB — Docker beheert het volume zelf,
-# geen handmatige mkdir nodig op de host. Toegang tot fbs.db loopt via
-# /var/lib/docker/volumes/fbs_db/_data/ of via een container-shell.
+#
+# Bevat ook Watchtower als sidecar voor zero-touch server-updates: de Tauri-
+# client triggert via een interne API-call op de FBS-server een Watchtower-
+# update wanneer de gebruiker op de "Server bijwerken"-knop klikt in de banner.
+# Watchtower's HTTP-poort wordt NIET gepubliceerd — alleen het docker-internal
+# netwerk kan erbij. De buitenwereld ziet alleen poort 3210.
 version: "3.8"
 
 services:
@@ -12,10 +15,22 @@ services:
     ports:
       - "3210:3000"
     volumes:
-      - fbs_db:/data
+      # Bind-mount naar een share-folder zodat fbs.db zichtbaar is in File Station
+      # en handmatig te backuppen via DSM. **Belangrijk:** deze map moet vóór
+      # `Build` al bestaan, anders weigert Container Manager het project. Maak
+      # 'm aan via File Station of: `mkdir -p /volume2/Docker/FBS/data`.
+      # Een named volume (`fbs_db:/data`) is technisch ook prima maar leeft in
+      # `/volume1/@docker/volumes/` — niet zichtbaar in File Station.
+      - /volume2/Docker/FBS/data:/data
     environment:
       - NODE_ENV=production
       - DB_PATH=/data/fbs.db
+      - FBS_SERVER_DEPLOYMENT=docker
+      - FBS_WATCHTOWER_URL=http://watchtower:8080
+      - FBS_WATCHTOWER_TOKEN=fbs-internal
+    labels:
+      # Watchtower watcht alleen containers met deze label.
+      - com.centurylinklabs.watchtower.enable=true
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 30s
@@ -23,5 +38,22 @@ services:
       start_period: 10s
       retries: 3
 
-volumes:
-  fbs_db:
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: fbs-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # Alleen containers met label 'watchtower.enable=true' (zie fbs hierboven)
+      - WATCHTOWER_LABEL_ENABLE=true
+      # HTTP-API enabled, geen scheduled poll (alleen on-demand via FBS).
+      - WATCHTOWER_HTTP_API_UPDATE=true
+      - WATCHTOWER_HTTP_API_TOKEN=fbs-internal
+      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=false
+      - WATCHTOWER_CLEANUP=true
+      # Geen e-mail/notificaties — niet nodig.
+      - WATCHTOWER_NOTIFICATIONS=
+    # GEEN ports: bewust niet gepubliceerd. Alleen FBS-server kan erbij via
+    # docker-internal DNS-naam 'watchtower'.
+

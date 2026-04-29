@@ -15,6 +15,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Sidebar from "@/components/Sidebar";
 import BackupCheck from "@/components/BackupCheck";
 import UpdateMelding from "@/components/UpdateMelding";
+import ServerUpdateMelding from "@/components/ServerUpdateMelding";
 import LoadingScreen from "@/components/LoadingScreen";
 import { SidebarProvider } from "@/lib/sidebar-context";
 import OnboardingWizard from "@/features/onboarding/components/OnboardingWizard";
@@ -63,6 +64,7 @@ export default function RootLayout({
               <main className="main">
                 <HeartbeatBanner />
                 <UpdateMelding />
+                <ServerUpdateMelding />
                 {children}
               </main>
             </div>

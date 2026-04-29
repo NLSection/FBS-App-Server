@@ -238,6 +238,12 @@ export default function TransactiesTabel() {
   const [kolomMenuOpen, setKolomMenuOpen]               = useState(false);
   const [zoekterm, setZoekterm]                         = useState('');
   const [actieveTab, setActieveTab]                     = useState<string>('');
+  // Wanneer de gebruiker via /transacties?ongecategoriseerd=1 binnenkomt
+  // (vanaf import-totalenblok) overschrijven we het tab-filter zodat alle
+  // ongecategoriseerde transacties zichtbaar worden, ongeacht in welke
+  // rekening/groep-tab ze vallen. Reset zodra de gebruiker handmatig een
+  // tab kiest of het categorie-filter wisselt — dan keert tab-scoping terug.
+  const [tabBypass, setTabBypass]                       = useState<boolean>(false);
   const [rekeningGroepen, setRekeningGroepen]           = useState<RekeningGroep[]>([]);
   const [geconfigureerdeTabs, setGeconfigureerdeTabs]   = useState<{ id: number; type: 'groep' | 'rekening'; entiteit_id: number; naam: string }[]>([]);
   const [tabsGeladen, setTabsGeladen]                   = useState(false);
@@ -276,6 +282,7 @@ const [patronModal, setPatronModal]                   = useState<PatronModalData
           setAlleJaren(true);
           setGeselecteerdePeriode(null);
           setCategorieFilter('ongecategoriseerd');
+          setTabBypass(true);
           setKlaar(true);
           return;
         }
@@ -668,6 +675,7 @@ const [patronModal, setPatronModal]                   = useState<PatronModalData
   }
 
   const tabTransacties = (() => {
+    if (tabBypass) return transacties;
     if (actieveTab.startsWith('groep:')) {
       const groepId = Number(actieveTab.slice(6));
       const groep = rekeningGroepen.find(g => g.id === groepId);
@@ -798,7 +806,7 @@ const [patronModal, setPatronModal]                   = useState<PatronModalData
             {tabItems.map(tab => {
               const actief = actieveTab === tab.key;
               return (
-                <button key={tab.key} onClick={() => setActieveTab(tab.key)}
+                <button key={tab.key} onClick={() => { setTabBypass(false); setActieveTab(tab.key); }}
                   style={{
                     padding: '10px 16px', fontSize: 14, cursor: 'pointer',
                     background: actief ? 'var(--bg-card)' : 'transparent',
@@ -819,7 +827,7 @@ const [patronModal, setPatronModal]                   = useState<PatronModalData
 
       {/* Categorie-filterrij */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <button onClick={() => setCategorieFilter('alle')} style={filterKnopStijl(categorieFilter === 'alle')}>
+        <button onClick={() => { setTabBypass(false); setCategorieFilter('alle'); }} style={filterKnopStijl(categorieFilter === 'alle')}>
           Alle categorieën ({tabTransacties.length})
         </button>
         {uniekeCategorieën.map(cat => {
@@ -828,7 +836,7 @@ const [patronModal, setPatronModal]                   = useState<PatronModalData
           return (
             <button
               key={cat}
-              onClick={() => setCategorieFilter(cat)}
+              onClick={() => { setTabBypass(false); setCategorieFilter(cat); }}
               style={{
                 ...filterKnopStijl(actief),
                 background: actief ? (kleur ?? 'var(--accent)') : 'var(--bg-card)',

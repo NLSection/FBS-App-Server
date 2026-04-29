@@ -42,9 +42,12 @@ jobs:
         id: tags
         run: |
           repo="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/fbs-app-server"
-          tags="$repo:latest,$repo:v${{ steps.ver.outputs.version }}"
+          # main-push → :dev (handmatig testen, geen rollout)
+          # tag-push  → :latest + :vX.Y.Z + :GITHUB_REF_NAME (productie-rollout)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            tags="$tags,$repo:${GITHUB_REF_NAME}"
+            tags="$repo:latest,$repo:v${{ steps.ver.outputs.version }},$repo:${GITHUB_REF_NAME}"
+          else
+            tags="$repo:dev"
           fi
           echo "tags=$tags" >> "$GITHUB_OUTPUT"
 

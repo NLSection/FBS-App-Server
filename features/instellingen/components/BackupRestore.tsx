@@ -125,19 +125,35 @@ export default function BackupRestore() {
   }
 
   useEffect(() => {
-    fetch('/api/instellingen').then(r => r.ok ? r.json() : null).then((d: { backupBewaarDagen?: number; backupExternPad?: string | null; backupExternInterval?: number } | null) => {
-      if (d) {
-        setBewaarDagen(d.backupBewaarDagen ?? 7);
-        setExternPad(d.backupExternPad ?? '');
-        setExternInterval(d.backupExternInterval ?? 60);
-        if (d.backupExternPad) { checkExternConfig(); laadHeartbeats(); }
+    // Eén bundle-fetch ipv 6 losse mount-calls. Mutaties + refresh blijven
+    // wel via de individuele endpoints lopen.
+    fetch('/api/instellingen/backup-bundle').then(r => r.ok ? r.json() : null).then((d: {
+      instellingen: { backupBewaarDagen: number; backupExternPad: string | null; backupExternInterval: number };
+      encryptie: { ingesteld: boolean; hint: string | null };
+      laatsteBackup: { naam: string; datum: string; grootte: number } | null;
+      pending: { naam: string; grootte: number; datum: string }[];
+      externConfig: { exists: boolean; hint: string | null } | null;
+      heartbeats: { apparaten: typeof andereApparaten } | null;
+    } | null) => {
+      if (!d) return;
+      setBewaarDagen(d.instellingen.backupBewaarDagen ?? 7);
+      setExternPad(d.instellingen.backupExternPad ?? '');
+      setExternInterval(d.instellingen.backupExternInterval ?? 60);
+      setEncryptieIngesteld(d.encryptie.ingesteld);
+      setEncryptieHint(d.encryptie.hint);
+      if (d.laatsteBackup) setLaatsteBackup(d.laatsteBackup);
+      setPendingBestanden(d.pending);
+      if (d.pending.length > 0 && window.location.hash === '#pending-extern') {
+        setPendingHighlight(true);
+        setTimeout(() => setPendingHighlight(false), 3000);
+        setTimeout(() => document.getElementById('pending-extern')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
       }
+      if (d.externConfig) {
+        setExternConfigBestaat(d.externConfig.exists);
+        setExternConfigHint(d.externConfig.hint);
+      }
+      if (d.heartbeats) setAndereApparaten(d.heartbeats.apparaten ?? []);
     }).catch(() => {});
-    fetch('/api/backup/encryptie').then(r => r.ok ? r.json() : null).then((d: { ingesteld: boolean; hint: string | null } | null) => {
-      if (d) { setEncryptieIngesteld(d.ingesteld); setEncryptieHint(d.hint); }
-    }).catch(() => {});
-    refreshLaatsteBackup();
-    laadPending();
 
     const heartbeatTimer = setInterval(() => { laadHeartbeats(); }, 30_000);
 

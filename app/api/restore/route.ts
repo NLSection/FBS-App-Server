@@ -13,9 +13,10 @@ import getDb, { DB_PATH, initFallbackSchema } from '@/lib/db';
 import { leesBackupNaarTmp, maakInterneBackup, BACKUP_DIR } from '@/lib/backup';
 import { runMigrations, SCHEMA_VERSION } from '@/lib/migrations';
 import { verifieerWachtwoord } from '@/lib/backupEncryptie';
-import { leesDiffFile, leesDiffMeta } from '@/lib/diff';
+import { leesDiffFile, leesDiffMeta, lijstDiffDatums } from '@/lib/diff';
 import { pasToe, wisSchemaCache, type LogRij } from '@/lib/wijzigingUndo';
 import { zonderLogging } from '@/lib/wijzigingContext';
+import { categoriseerTransacties } from '@/lib/categorisatie';
 
 declare global {
   // eslint-disable-next-line no-var
@@ -25,11 +26,35 @@ declare global {
 const BESTANDS_REGEX = /^backup_(anker_)?[\d_-]+\.sqlite(\.enc)?\.gz$/;
 const ANKER_DATUM_REGEX = /^backup_anker_(\d{4}-\d{2}-\d{2})\.sqlite(\.enc)?\.gz$/;
 
+// Vervangt DB_PATH atomair via unlink+rename met retry-loop. Vermijdt de
+// `copyFile`-race op Windows waarbij AV/Search Indexer kort na onze close()
+// het bestand opent → ERROR_SHARING_VIOLATION → libuv `UNKNOWN`. unlink+
+// rename op hetzelfde volume opent de destination niet opnieuw voor write.
+async function vervangDbBestand(src: string, dest: string) {
+  const RETRY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'UNKNOWN']);
+  for (let poging = 1; poging <= 5; poging++) {
+    try {
+      try { await fsp.unlink(dest); } catch (e) {
+        if ((e as { code?: string }).code !== 'ENOENT') throw e;
+      }
+      await fsp.rename(src, dest);
+      return;
+    } catch (e) {
+      const code = (e as { code?: string }).code ?? '';
+      if (poging === 5 || !RETRY_CODES.has(code)) throw e;
+      await new Promise(r => setTimeout(r, 100 * poging));
+    }
+  }
+}
+
+// `backup_versie` ZIT BEWUST NIET in DeviceVelden: dat is sync-state, geen
+// device-eigenschap. Wordt apart bepaald als max van bewaarde + lokale meta +
+// externe meta (zie hieronder), zodat de teller na restore niet wordt
+// teruggezet naar de pre-restore waarde.
 type DeviceVelden = {
   apparaat_id: string | null;
   apparaat_naam: string | null;
   backup_extern_pad: string | null;
-  backup_versie: number;
   backup_encryptie_hash: string | null;
   backup_encryptie_hint: string | null;
   backup_encryptie_salt: string | null;
@@ -102,9 +127,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Schrijf upload naar tmp en pak uit naar tmp-DB
+      // Schrijf upload naar tmp en pak uit naar tmp-DB. Suffix moet matchen
+      // met wat leesBackupNaarTmp() verwacht — anders skipt die de decryptie
+      // op encrypted uploads en faalt gunzip met "incorrect header check".
       fs.mkdirSync(BACKUP_DIR, { recursive: true });
-      uploadTmpPad = path.join(BACKUP_DIR, `.upload-${process.pid}-${Date.now()}.bin`);
+      const uploadSuffix = isEncrypted ? '.sqlite.enc.gz' : '.sqlite.gz';
+      uploadTmpPad = path.join(BACKUP_DIR, `.upload-${process.pid}-${Date.now()}${uploadSuffix}`);
       await fsp.writeFile(uploadTmpPad, Buffer.from(await file.arrayBuffer()));
       try {
         tmpDbPad = await leesBackupNaarTmp(uploadTmpPad, hash ?? undefined, salt ?? undefined);
@@ -184,12 +212,15 @@ export async function POST(req: NextRequest) {
 
     // Bewaar device-specifieke velden uit huidige instellingen vóór de DB wordt vervangen
     let deviceVelden: DeviceVelden | undefined;
+    let preRestoreBackupVersie = 0;
     try {
       const db = getDb();
-      deviceVelden = db.prepare(`SELECT apparaat_id, apparaat_naam, backup_extern_pad, backup_versie,
+      deviceVelden = db.prepare(`SELECT apparaat_id, apparaat_naam, backup_extern_pad,
           backup_encryptie_hash, backup_encryptie_hint, backup_encryptie_salt,
           backup_herstelsleutel_hash, update_kanaal FROM instellingen WHERE id = 1`)
         .get() as DeviceVelden | undefined;
+      const v = db.prepare('SELECT backup_versie FROM instellingen WHERE id = 1').get() as { backup_versie: number } | undefined;
+      preRestoreBackupVersie = v?.backup_versie ?? 0;
     } catch { /* eerste run — geen rij */ }
 
     // Pre-restore safety backup (gebruikt huidige connection — moet vóór close)
@@ -208,8 +239,9 @@ export async function POST(req: NextRequest) {
       try { fs.unlinkSync(DB_PATH + ext); } catch { /* bestaat mogelijk niet */ }
     }
 
-    // Vervang DB-file
-    await fsp.copyFile(tmpDbPad!, DB_PATH);
+    // Vervang DB-file (unlink+rename met retry — zie vervangDbBestand)
+    await vervangDbBestand(tmpDbPad!, DB_PATH);
+    tmpDbPad = null; // rename heeft tmp al verplaatst — finally moet niet opruimen
 
     // Heropen via getDb (lazy init met pragmas + fallback schema)
     const db = getDb();
@@ -225,7 +257,7 @@ export async function POST(req: NextRequest) {
 
     // backup_versie syncen naar max van bewaarde, lokale meta en externe meta
     try {
-      let maxVersie = deviceVelden?.backup_versie ?? 0;
+      let maxVersie = preRestoreBackupVersie;
       const metaPath = path.join(BACKUP_DIR, 'backup-meta.json');
       if (fs.existsSync(metaPath)) {
         const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8')) as { versie?: number };
@@ -247,57 +279,72 @@ export async function POST(req: NextRequest) {
       try { db.prepare('UPDATE instellingen SET laatst_herstelde_backup = ? WHERE id = 1').run(bestandsnaam); } catch { /* */ }
     }
 
-    // Forward replay van diff-file (F5: per-dag): speelt de log-entries van
-    // de dag die bij het anker hoort opnieuw af op de net-geladen DB.
-    // Datum wordt uit de ankernaam gehaald (`backup_anker_<YYYY-MM-DD>.sqlite.gz`).
-    // Zonder logging-scope zodat de capture-triggers niet dubbel registreren.
+    // Forward replay van diff-files: speelt log-entries van álle wlogs in
+    // `diffSourceDir` af die nog niet in de DB-staat zitten.
     //
-    // Defensief: per entry een eigen try/catch + savepoint. Een failing
-    // entry (bijv. door schema-evolutie sinds de entry werd opgeslagen)
-    // breekt niet de hele restore — die ene wijziging is "verloren", de
-    // rest van de replay én de basisstaat van het anker blijven intact.
-    // Aantallen worden teruggegeven aan de UI als waarschuwing.
+    // Multi-day: niet alleen de wlog van de ankerdatum, maar elke wlog die
+    // entries heeft met id > MAX(wijziging_log.id). Cross-machine catch-up
+    // (laptop achterloopt op PC) en mengvormen anker_28 + wlog_28+29 werken
+    // hierdoor automatisch. Het `e.id > maxId` filter binnen elke wlog
+    // voorkomt dubbel-apply als een wlog overlap heeft met het anker.
+    //
+    // Defensief: per entry een eigen savepoint. Een failing entry (bijv.
+    // schema-evolutie of FK-conflict) breekt niet de hele restore — die ene
+    // wijziging is verloren, de rest gaat door. Aantallen + redenen komen
+    // terug naar de UI.
     let replayed = 0;
     const replayWaarschuwingen: { entryId: number; tabel: string; reden: string }[] = [];
-    let diffMetaVoorCursor: ReturnType<typeof leesDiffMeta> = null;
+    let cursorHoogsteId: number | null = null;
     if (diffSourceDir) {
       try {
-        const datumMatch = bestandsnaam!.match(ANKER_DATUM_REGEX);
-        const datum = datumMatch ? datumMatch[1] : null;
-        const diffMeta = datum ? leesDiffMeta(diffSourceDir, datum) : null;
-        diffMetaVoorCursor = diffMeta;
         const enc = diffEncHash && diffEncSalt ? { hash: diffEncHash, salt: diffEncSalt } : undefined;
-        const diffEntries = datum ? await leesDiffFile(diffSourceDir, datum, enc) : [];
-        if (diffEntries.length > 0) {
+        const ankerMatch = bestandsnaam!.match(ANKER_DATUM_REGEX);
+        const ankerDatum = ankerMatch ? ankerMatch[1] : null;
+        // Alle wlog-datums in de bron-dir, oplopend gesorteerd. Filter op
+        // datum >= ankerDatum als we 'm kennen — eerdere wlogs zitten
+        // sowieso al in het anker baked-in en hoeven niet gelezen te
+        // worden (puur efficiency; het id-filter zou ze ook overslaan).
+        const alleDatums = lijstDiffDatums(diffSourceDir);
+        const teLezen = ankerDatum ? alleDatums.filter(d => d >= ankerDatum) : alleDatums;
+
+        const insertStmt = db.prepare(`
+          INSERT OR IGNORE INTO wijziging_log
+            (id, actie_id, timestamp_ms, type, beschrijving, tabel, rij_id, operatie, voor_json, na_json, teruggedraaid)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const datum of teLezen) {
+          const meta = leesDiffMeta(diffSourceDir, datum);
+          if (meta && typeof meta.hoogste_id === 'number') {
+            cursorHoogsteId = cursorHoogsteId === null ? meta.hoogste_id : Math.max(cursorHoogsteId, meta.hoogste_id);
+          }
+          const diffEntries = await leesDiffFile(diffSourceDir, datum, enc);
+          if (diffEntries.length === 0) continue;
+
+          // maxId per wlog opnieuw lezen — vorige wlog kan entries hebben
+          // toegevoegd, dus de cursor schuift mee.
           const maxRow = db.prepare('SELECT COALESCE(MAX(id), 0) AS m FROM wijziging_log').get() as { m: number };
           const maxId = maxRow.m;
           const teReplayen = diffEntries.filter(e => e.id > maxId);
-          if (teReplayen.length > 0) {
-            zonderLogging(() => {
-              const insertStmt = db.prepare(`
-                INSERT OR IGNORE INTO wijziging_log
-                  (id, actie_id, timestamp_ms, type, beschrijving, tabel, rij_id, operatie, voor_json, na_json, teruggedraaid)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `);
-              for (const e of teReplayen) {
-                // Per-entry savepoint: bij fout rolt alleen deze entry
-                // terug, de rest van de replay gaat door.
-                db.exec('SAVEPOINT replay_entry');
-                try {
-                  if (e.teruggedraaid !== 1) pasToe(db, e as LogRij);
-                  insertStmt.run(e.id, e.actie_id, e.timestamp_ms, e.type, e.beschrijving, e.tabel, e.rij_id, e.operatie, e.voor_json, e.na_json, e.teruggedraaid);
-                  db.exec('RELEASE replay_entry');
-                  replayed++;
-                } catch (err) {
-                  db.exec('ROLLBACK TO replay_entry');
-                  db.exec('RELEASE replay_entry');
-                  const reden = err instanceof Error ? err.message : String(err);
-                  replayWaarschuwingen.push({ entryId: e.id, tabel: e.tabel, reden });
-                  console.warn(`[restore] Replay-entry ${e.id} (${e.tabel}/${e.operatie}) overgeslagen: ${reden}`);
-                }
+          if (teReplayen.length === 0) continue;
+
+          zonderLogging(() => {
+            for (const e of teReplayen) {
+              db.exec('SAVEPOINT replay_entry');
+              try {
+                if (e.teruggedraaid !== 1) pasToe(db, e as LogRij);
+                insertStmt.run(e.id, e.actie_id, e.timestamp_ms, e.type, e.beschrijving, e.tabel, e.rij_id, e.operatie, e.voor_json, e.na_json, e.teruggedraaid);
+                db.exec('RELEASE replay_entry');
+                replayed++;
+              } catch (err) {
+                db.exec('ROLLBACK TO replay_entry');
+                db.exec('RELEASE replay_entry');
+                const reden = err instanceof Error ? err.message : String(err);
+                replayWaarschuwingen.push({ entryId: e.id, tabel: e.tabel, reden });
+                console.warn(`[restore] Replay-entry ${e.id} (${e.tabel}/${e.operatie}) overgeslagen: ${reden}`);
               }
-            });
-          }
+            }
+          });
         }
       } catch (err) {
         console.error('[restore] Diff-replay mislukt:', err);
@@ -325,12 +372,24 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Sync-cursor bijwerken zodat split-brain detectie de externe staat nu
-    // als "gezien" markeert. We gebruiken de meta die bij het gerestore'de
-    // anker hoort.
-    if (diffMetaVoorCursor && typeof diffMetaVoorCursor.hoogste_id === 'number') {
+    // Hermatch: categorisatie + aanpassings-rijen regenereren voor transacties
+    // die via wlog-replay zijn binnengekomen. Reden: `categoriseerTransacties`
+    // draait op de bron-machine onder `zonderLogging` (afgeleide staat hoort
+    // niet in de log), waardoor de bijbehorende `transactie_aanpassingen`-INSERTs
+    // nooit in de wlog komen. Cross-machine replay van transactie-INSERTs levert
+    // dus rijen op zonder aanpassings-rij = "ongecategoriseerd" in de UI. Door
+    // hier te hermatchen wordt de afgeleide staat lokaal opgebouwd uit de eigen
+    // `categorieen`-rules (die wel in het anker zitten).
+    let postReplayHermatch = { gecategoriseerd: 0, ongecategoriseerd: 0 };
+    try { postReplayHermatch = await categoriseerTransacties(); }
+    catch (err) { console.warn('[restore] post-replay hermatch mislukt:', err); }
+
+    // Sync-cursor bijwerken: max van hoogste_id over alle gelezen wlog-meta's.
+    // Hierdoor markeren we de extern's staat als "gezien" t/m het laatste
+    // wlog-bestand dat we hebben verwerkt.
+    if (cursorHoogsteId !== null) {
       try {
-        db.prepare('UPDATE instellingen SET gezien_extern_hoogste_id = ? WHERE id = 1').run(diffMetaVoorCursor.hoogste_id);
+        db.prepare('UPDATE instellingen SET gezien_extern_hoogste_id = ? WHERE id = 1').run(cursorHoogsteId);
       } catch { /* */ }
     }
 
@@ -340,6 +399,8 @@ export async function POST(req: NextRequest) {
       diffReplayed: replayed,
       diffOvergeslagen: replayWaarschuwingen.length,
       diffWaarschuwingen: replayWaarschuwingen.slice(0, 20), // top 20 voor UI
+      hermatchGecategoriseerd: postReplayHermatch.gecategoriseerd,
+      hermatchOngecategoriseerd: postReplayHermatch.ongecategoriseerd,
     });
   } catch (err) {
     const bericht = err instanceof Error ? err.message : 'Restore mislukt.';

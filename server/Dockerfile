@@ -23,7 +23,8 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
-    DB_PATH=/data/fbs.db
+    DB_PATH=/data/fbs.db \
+    FBS_SERVER_DEPLOYMENT=docker
 
 RUN groupadd -g 1001 fbs \
  && useradd -u 1001 -g fbs -s /bin/bash -m fbs \
