@@ -5,12 +5,66 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FBS</title>
 <style>
+  /* Body initieel verbergen: voorkomt FOUC tussen donker-default en thema-toepassing.
+     Vangnet via setTimeout in script onder zodat browser-context (zonder Tauri)
+     ook tonen na 200ms. */
+  body.fbs-cloak { visibility: hidden; }
+</style>
+<script>
+  // Thema bepalen vóór paint. In Tauri-productie leeft localStorage in een ander
+  // origin dan de Node-sidecar → we lezen `thema.txt` via Rust command. In dev-
+  // browser is localStorage de bron.
+  (function () {
+    document.documentElement.classList.add('fbs-init');
+    function pas(t) {
+      var l = t === 'licht' || (t === 'systeem' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+      if (l) document.documentElement.setAttribute('data-theme', 'licht');
+      if (document.body) document.body.classList.remove('fbs-cloak');
+    }
+    function viaTauri() {
+      var inv = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+      if (!inv) return false;
+      inv('get_thema').then(function (t) { pas(t || 'donker'); }).catch(function () { pas('donker'); });
+      return true;
+    }
+    if (!viaTauri()) {
+      // Tauri internals nog niet beschikbaar: poll kort, anders localStorage-fallback.
+      var pogingen = 0;
+      var iv = setInterval(function () {
+        pogingen++;
+        if (viaTauri() || pogingen > 20) {
+          clearInterval(iv);
+          if (pogingen > 20) {
+            try { pas(localStorage.getItem('thema') || 'donker'); } catch (e) { pas('donker'); }
+          }
+        }
+      }, 10);
+    }
+    // Hard vangnet: na 250ms hoe dan ook tonen — voorkomt onzichtbaar scherm bij stille fout.
+    setTimeout(function () { if (document.body) document.body.classList.remove('fbs-cloak'); }, 250);
+  })();
+</script>
+<style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --splash-bg: #0f1117;
+    --splash-text: #e8eaf6;
+    --splash-accent: #5c7cfa;
+    --splash-muted: #3e4460;
+    --splash-spinner-track: #1a1d27;
+  }
+  [data-theme="licht"] {
+    --splash-bg: #f5efe6;
+    --splash-text: #2a2218;
+    --splash-accent: #4263eb;
+    --splash-muted: #948568;
+    --splash-spinner-track: #d8cdb8;
+  }
   html, body {
     width: 100%; height: 100%;
-    background: #0f1117;
+    background: var(--splash-bg);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
-    color: #e8eaf6;
+    color: var(--splash-text);
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
@@ -31,14 +85,14 @@
   .app-name {
     font-size: 22px;
     font-weight: 700;
-    color: #e8eaf6;
+    color: var(--splash-text);
     line-height: 1;
     letter-spacing: -0.3px;
   }
   .app-afkorting {
     font-size: 13px;
     font-weight: 500;
-    color: #5c7cfa;
+    color: var(--splash-accent);
     margin-top: 4px;
     line-height: 1;
   }
@@ -57,21 +111,21 @@
   }
   .made-by-text {
     font-size: 11px;
-    color: #3e4460;
+    color: var(--splash-muted);
     line-height: 1;
   }
   .spinner {
     width: 20px;
     height: 20px;
-    border: 2px solid #1a1d27;
-    border-top-color: #5c7cfa;
+    border: 2px solid var(--splash-spinner-track);
+    border-top-color: var(--splash-accent);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
-<body>
+<body class="fbs-cloak">
 <div class="wrap">
   <svg class="fbs-logo" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>

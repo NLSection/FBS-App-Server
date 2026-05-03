@@ -44,6 +44,7 @@ export interface Instellingen {
   transactieKolommen:   string[] | null;
   helpModus:            boolean;
   uiZoom:               number;        // 25-200, percentage van native rendering
+  thema:                'donker' | 'licht' | 'systeem';
 }
 
 type Row = {
@@ -80,11 +81,12 @@ type Row = {
   transactie_kolommen:    string | null;
   help_modus:             number;
   ui_zoom:                number;
+  thema:                  string | null;
 };
 
 export function getInstellingen(): Instellingen {
   const row = getDb()
-    .prepare('SELECT maand_start_dag, dashboard_bls_tonen, dashboard_cat_tonen, cat_uitklappen, cat_trx_uitgeklapt, bls_trx_uitgeklapt, vaste_posten_overzicht, vaste_posten_afwijking_procent, vaste_posten_buffer, vaste_posten_vergelijk, vaste_posten_nieuw_drempel, vaste_posten_subtabel_periode, vaste_posten_verberg_drempel, backup_bewaar_dagen, apparaat_id, apparaat_naam, backup_extern_pad, backup_versie, backup_encryptie_hash, backup_encryptie_hint, backup_encryptie_salt, omboekingen_auto, gebruikers_profiel, update_kanaal, trends_grid_cols, trends_grid_spacing, onboarding_voltooid, regel_auto_archiveer_maanden, aangepast_auto_archiveer_maanden, backup_extern_interval, transactie_kolommen, help_modus, ui_zoom FROM instellingen WHERE id = 1')
+    .prepare('SELECT maand_start_dag, dashboard_bls_tonen, dashboard_cat_tonen, cat_uitklappen, cat_trx_uitgeklapt, bls_trx_uitgeklapt, vaste_posten_overzicht, vaste_posten_afwijking_procent, vaste_posten_buffer, vaste_posten_vergelijk, vaste_posten_nieuw_drempel, vaste_posten_subtabel_periode, vaste_posten_verberg_drempel, backup_bewaar_dagen, apparaat_id, apparaat_naam, backup_extern_pad, backup_versie, backup_encryptie_hash, backup_encryptie_hint, backup_encryptie_salt, omboekingen_auto, gebruikers_profiel, update_kanaal, trends_grid_cols, trends_grid_spacing, onboarding_voltooid, regel_auto_archiveer_maanden, aangepast_auto_archiveer_maanden, backup_extern_interval, transactie_kolommen, help_modus, ui_zoom, thema FROM instellingen WHERE id = 1')
     .get() as Row | undefined;
   if (!row) return {
     maandStartDag: 1, dashboardBlsTonen: true, dashboardCatTonen: true,
@@ -109,6 +111,7 @@ export function getInstellingen(): Instellingen {
     transactieKolommen: null,
     helpModus: false,
     uiZoom: 100,
+    thema: 'donker',
   };
   return {
     maandStartDag:          row.maand_start_dag,
@@ -147,6 +150,7 @@ export function getInstellingen(): Instellingen {
     })(),
     helpModus:            (row.help_modus ?? 0) !== 0,
     uiZoom:               row.ui_zoom ?? 100,
+    thema:                row.thema === 'licht' ? 'licht' : row.thema === 'systeem' ? 'systeem' : 'donker',
   };
 }
 
@@ -304,6 +308,12 @@ export function updateInstellingen(data: Partial<Instellingen>): void {
       throw new Error('uiZoom moet een geheel getal zijn tussen 25 en 200.');
     }
     sets.push('ui_zoom = ?'); values.push(data.uiZoom);
+  }
+  if (data.thema !== undefined) {
+    if (data.thema !== 'donker' && data.thema !== 'licht' && data.thema !== 'systeem') {
+      throw new Error("thema moet 'donker', 'licht' of 'systeem' zijn.");
+    }
+    sets.push('thema = ?'); values.push(data.thema);
   }
 
   if (sets.length === 0) throw new Error('Geen velden om bij te werken.');

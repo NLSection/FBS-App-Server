@@ -94,21 +94,8 @@ export default function AlgemeneInstellingen({ compact = false, sectie }: Props)
   const [succes, setSucces]               = useState(false);
   const [helpModus, setHelpModus]         = useState(false);
   const [profiel, setProfiel]             = useState<Profiel | null>(null);
-  const [uiZoom, setUiZoom]               = useState<number>(100);
   const [tourKeuze, setTourKeuze]         = useState('onboarding-volledig');
   const [stapKeuze, setStapKeuze]         = useState(0);
-
-  async function handleZoomChange(nieuwZoom: number) {
-    setUiZoom(nieuwZoom);
-    // Direct toepassen op de webview — synchronere UX dan wachten op PUT-response
-    // en dan een refresh-event firen dat opnieuw de API moet bevragen.
-    window.dispatchEvent(new CustomEvent('zoom-changed', { detail: { zoom: nieuwZoom } }));
-    await fetch('/api/instellingen', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uiZoom: nieuwZoom }),
-    }).catch(() => { /* UI blijft in sync */ });
-  }
 
   // Periode configs
   const [configs, setConfigs]             = useState<PeriodeConfig[]>([]);
@@ -129,7 +116,6 @@ export default function AlgemeneInstellingen({ compact = false, sectie }: Props)
         if (d?.maandStartDag) setMaandStartDag(d.maandStartDag);
         if (d?.gebruikersProfiel) setProfiel(d.gebruikersProfiel);
         setHelpModus(!!d?.helpModus);
-        if (typeof d?.uiZoom === 'number') setUiZoom(d.uiZoom);
       });
     fetch('/api/periode-configuraties')
       .then(r => r.ok ? r.json() : [])
@@ -256,10 +242,10 @@ export default function AlgemeneInstellingen({ compact = false, sectie }: Props)
       {(() => {
         const p = berekenPeriode(maandStartDag);
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, padding: '10px 14px', background: '#1a1d2a', borderRadius: 8, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, padding: '10px 14px', background: 'var(--bg-surface)', borderRadius: 8, border: '1px solid var(--border)' }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-h)', whiteSpace: 'nowrap' }}>{p.start}</span>
             <div style={{ flex: 1, height: 1, background: 'var(--border)', position: 'relative' }}>
-              <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: '#1a1d2a', padding: '0 8px', fontSize: 11, color: 'var(--accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>{p.label}</span>
+              <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'var(--bg-surface)', padding: '0 8px', fontSize: 11, color: 'var(--accent)', fontWeight: 600, whiteSpace: 'nowrap' }}>{p.label}</span>
             </div>
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-h)', whiteSpace: 'nowrap' }}>{p.eind}</span>
           </div>
@@ -651,9 +637,6 @@ export default function AlgemeneInstellingen({ compact = false, sectie }: Props)
 
   const toonStartdag = !sectie || sectie === 'startdag';
   const toonProfiel  = !sectie || sectie === 'profiel';
-  const toonZoom     = !sectie;
-
-  const zoomOpties = [25, 50, 75, 90, 100, 110, 125, 150, 175, 200];
 
   return (
     <>
@@ -682,33 +665,6 @@ export default function AlgemeneInstellingen({ compact = false, sectie }: Props)
             </div>
             <div style={{ padding: 20 }}>
               {startdagContent}
-            </div>
-          </div>
-        )}
-
-        {toonZoom && (
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
-            <div style={{ background: 'var(--accent-dim)', padding: '10px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <p style={subKop}>Zoom</p>
-              <InfoTooltip volledigeBreedte tekst="Maakt de hele app groter of kleiner. Handig op kleinere of lagere-resolutie schermen waar de standaardweergave te krap aanvoelt. Wijziging is direct zichtbaar." />
-            </div>
-            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <div>
-                <label className={labelCls}>Zoomniveau</label>
-                <select
-                  className={inputCls}
-                  value={uiZoom}
-                  onChange={e => handleZoomChange(parseInt(e.target.value, 10))}
-                  style={{ width: 'fit-content' }}
-                >
-                  {zoomOpties.map(pct => (
-                    <option key={pct} value={pct}>{pct}%</option>
-                  ))}
-                </select>
-              </div>
-              <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 14, flex: 1 }}>
-                100% is de standaardweergave. Lager = compacter, hoger = groter.
-              </p>
             </div>
           </div>
         )}

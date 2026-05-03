@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { getInstellingen, updateInstellingen } from '@/lib/instellingen';
 import { metWijziging } from '@/lib/wijziging';
 import { categoriseerTransacties } from '@/lib/categorisatie';
+import { DB_PATH } from '@/lib/db';
 
 export function GET() {
   try {
@@ -47,6 +50,7 @@ export async function PUT(request: NextRequest) {
   if (body.transactieKolommen !== undefined) update.transactieKolommen = body.transactieKolommen === null ? null : (Array.isArray(body.transactieKolommen) ? (body.transactieKolommen as unknown[]).map(String) : null);
   if (body.helpModus !== undefined) update.helpModus = Boolean(body.helpModus);
   if (body.uiZoom !== undefined) update.uiZoom = Number(body.uiZoom);
+  if (body.thema !== undefined) update.thema = body.thema === 'licht' ? 'licht' : body.thema === 'systeem' ? 'systeem' : 'donker';
 
   // Bouw beschrijving vóór de write zodat metWijziging hem aan de log-entries
   // kan koppelen. Vergelijk met huidige staat om alleen daadwerkelijke
@@ -70,6 +74,7 @@ export async function PUT(request: NextRequest) {
     transactieKolommen: 'Transacties: zichtbare kolommen',
     helpModus: 'Helpmodus',
     uiZoom: 'Zoom (%)',
+    thema: 'Thema',
   };
   const wijzigingen: string[] = [];
   for (const sleutel of Object.keys(update)) {
@@ -88,6 +93,14 @@ export async function PUT(request: NextRequest) {
       try {
         updateInstellingen(update);
         if (body.omboekingenAuto !== undefined) categoriseerTransacties();
+        // Spiegel thema naar `thema.txt` naast de database. Tauri's loading.html
+        // (ander origin dan de Next.js-app) leest dit bij elke start om een
+        // FOUC bij light-mode te voorkomen — localStorage werkt cross-origin
+        // niet en is daar onbruikbaar.
+        if (update.thema !== undefined) {
+          try { fs.writeFileSync(path.join(path.dirname(DB_PATH), 'thema.txt'), update.thema, 'utf8'); }
+          catch { /* niet kritiek — splash valt terug op donker */ }
+        }
         return new NextResponse(null, { status: 204 });
       } catch (err) {
         const bericht = err instanceof Error ? err.message : 'Databasefout.';

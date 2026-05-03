@@ -32,6 +32,7 @@ import { useSidebar } from '@/lib/sidebar-context';
 import { APP_VERSION } from '@/lib/version';
 import MiniTourKnop from '@/components/MiniTourKnop';
 import WipBadge from '@/components/WipBadge';
+import ThemaQuickToggle from '@/components/ThemaQuickToggle';
 
 
 const navItems: { href: string; label: string; icon: React.ReactNode; miniTourId?: string; wip?: boolean }[] = [
@@ -322,14 +323,15 @@ export default function Sidebar() {
             </Link>
           </div>
         )}
-        <div className="sidebar-footer" style={{ justifyContent: collapsed ? 'center' : undefined, gap: 10, marginTop: 0 }}>
+        <div className="sidebar-footer" style={{ justifyContent: collapsed ? 'center' : undefined, gap: 10, marginTop: 0, flexWrap: collapsed ? 'wrap' : 'nowrap' }}>
           <SectionLabsLogo />
           {!collapsed && (
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, minWidth: 0, flex: 1 }}>
               <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-h)', letterSpacing: '-0.1px' }}>Section Labs</span>
               <span style={{ fontSize: 10, color: 'var(--text-dim)', opacity: 0.65, marginTop: 2 }}>v{APP_VERSION}</span>
             </div>
           )}
+          <ThemaQuickToggle collapsed={collapsed} />
         </div>
       </div>
     </nav>

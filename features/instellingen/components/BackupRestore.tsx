@@ -18,8 +18,10 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
+import { open as tauriOpenDialog, save as tauriSaveDialog } from '@tauri-apps/plugin-dialog';
 import InfoTooltip from '@/components/InfoTooltip';
 import MiniTourKnop from '@/components/MiniTourKnop';
+import { valideerBackupNaam } from '@/lib/backup-validatie';
 
 const TABEL_GROEPEN = [
   { label: 'Transacties',     tabellen: ['transacties', 'imports', 'transactie_aanpassingen', 'transacties_tabs'] },
@@ -325,21 +327,62 @@ export default function BackupRestore() {
   }
 
   async function handleDownload() {
-    setBackupBezig(true); setBackupFout(null);
+    setBackupFout(null);
+    const datum = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }).replace(' ', '_').replace(/:/g, '-');
+    const naam = `fbs-backup-${datum}.sqlite.gz`;
+    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+    if (isTauri) {
+      // Native save-dialog → server schrijft direct naar pad. WebView2 (Win11)
+      // ondersteunt `<a download>` met blob-URL niet betrouwbaar; deze route
+      // omzeilt dat volledig.
+      try {
+        const pad = await tauriSaveDialog({
+          defaultPath: naam,
+          filters: [{ name: 'Backup', extensions: ['sqlite.gz'] }],
+        });
+        if (!pad) return;
+        setBackupBezig(true);
+        const res = await fetch('/api/backup/opslaan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pad }),
+        });
+        setBackupBezig(false);
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setBackupFout((d as { error?: string }).error ?? 'Download mislukt.');
+        }
+      } catch (e) {
+        setBackupBezig(false);
+        setBackupFout(`Download mislukt: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      return;
+    }
+
+    // Browser/dev: klassieke <a download> flow.
+    setBackupBezig(true);
     const res = await fetch('/api/backup');
     setBackupBezig(false);
     if (!res.ok) { setBackupFout('Download mislukt.'); return; }
     const blob = await res.blob();
-    const datum = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }).replace(' ', '_').replace(/:/g, '-');
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `fbs-backup-${datum}.sqlite.gz`; a.click();
+    a.href = url; a.download = naam;
+    document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }
 
   function verwerkBackupBestand(file: File) {
     setRestoreFout(null);
     setBackupBestandNaam(file.name);
+
+    const v = valideerBackupNaam(file.name);
+    if (!v.ok) {
+      setRestoreFout(v.reden);
+      setImportModal('bestanden');
+      return;
+    }
 
     // Versleutelde backup: open prompt voor wachtwoord (en eventueel externe pad).
     // De multipart upload-flow stuurt het bestand zelf naar /api/restore.
@@ -367,43 +410,61 @@ export default function BackupRestore() {
 
   async function kiesAnderBestand() {
     setRestoreFout(null);
-    // Tauri-context: native bestandsdialog via plugin-dialog + plugin-fs
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const pad = await open({
-        multiple: false,
-        directory: false,
-        title: 'Kies backup bestand',
-        filters: [{ name: 'Backup', extensions: ['gz'] }],
-      });
-      if (!pad || typeof pad !== 'string') return; // gebruiker annuleerde
-      const res = await fetch(`/api/backup/lees-pad?pad=${encodeURIComponent(pad)}`);
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        setRestoreFout((d as { error?: string }).error ?? 'Bestand kon niet gelezen worden.');
-        return;
+    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+    if (isTauri) {
+      // Native dialog via plugin-dialog (statisch geïmporteerd zodat de
+      // user-gesture op WKWebView/Big Sur niet verloren gaat).
+      try {
+        const pad = await tauriOpenDialog({
+          multiple: false,
+          directory: false,
+          title: 'Kies backup bestand',
+          filters: [{ name: 'Backup', extensions: ['gz'] }],
+        });
+        if (!pad || typeof pad !== 'string') return;
+        const res = await fetch(`/api/backup/lees-pad?pad=${encodeURIComponent(pad)}`);
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setRestoreFout((d as { error?: string }).error ?? 'Bestand kon niet gelezen worden.');
+          return;
+        }
+        const blob = await res.blob();
+        const naam = pad.split(/[\\/]/).pop() ?? 'backup';
+        const file = new File([blob], naam);
+        verwerkBackupBestand(file);
+      } catch (e) {
+        setRestoreFout(`Bestand kiezen mislukt: ${e instanceof Error ? e.message : String(e)}`);
       }
-      const blob = await res.blob();
-      const naam = pad.split(/[\\/]/).pop() ?? 'backup';
-      const file = new File([blob], naam);
-      verwerkBackupBestand(file);
       return;
-    } catch {
-      // Tauri niet beschikbaar (dev/browser) — programmatische click op verborgen input
     }
+    // Browser/dev: programmatische click op verborgen input.
     fileRef.current?.click();
   }
 
   async function handleWissenBackup() {
-    setWissenBackupBezig(true);
-    const res = await fetch('/api/backup');
-    setWissenBackupBezig(false);
-    if (!res.ok) return;
-    const blob = await res.blob();
     const datum = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Amsterdam' }).replace(' ', '_').replace(/:/g, '-');
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `fbs-backup-${datum}.sqlite.gz`; a.click();
-    URL.revokeObjectURL(url);
+    const naam = `fbs-backup-${datum}.sqlite.gz`;
+    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+    if (isTauri) {
+      try {
+        const pad = await tauriSaveDialog({ defaultPath: naam, filters: [{ name: 'Backup', extensions: ['sqlite.gz'] }] });
+        if (!pad) return;
+        setWissenBackupBezig(true);
+        const res = await fetch('/api/backup/opslaan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pad }) });
+        setWissenBackupBezig(false);
+        if (!res.ok) return;
+      } catch { setWissenBackupBezig(false); return; }
+    } else {
+      setWissenBackupBezig(true);
+      const res = await fetch('/api/backup');
+      setWissenBackupBezig(false);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = naam; a.click();
+      URL.revokeObjectURL(url);
+    }
     setWissenModal(false); setBevestigenModal(true); setWissenTekst(''); setWissenFout(null);
   }
 
@@ -798,7 +859,7 @@ export default function BackupRestore() {
               {Object.entries(restoreResultaat).map(([t, n]) => `${t} (${n} records)`).join(', ')}
             </p>
           )}
-          <input id="vrije-backup-picker" ref={fileRef} type="file" accept=".json,.json.gz,.gz" onChange={handleFileChange}
+          <input id="vrije-backup-picker" ref={fileRef} type="file" accept=".gz" onChange={handleFileChange}
             style={{ position: 'absolute', width: 0, height: 0, opacity: 0, pointerEvents: 'none' }} />
           <button onClick={openImportModal} style={btnDanger}>Importeer backup</button>
         </div>

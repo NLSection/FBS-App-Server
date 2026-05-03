@@ -45,7 +45,7 @@ import getDb from '@/lib/db';
 import { BACKUP_TABELLEN } from '@/config/backupTabellen';
 
 // Huidig schema-versienummer. Ophogen bij elke release met schema-wijzigingen.
-export const SCHEMA_VERSION = 80;
+export const SCHEMA_VERSION = 82;
 
 // Nieuwe transacties tabel DDL — gedeeld door fresh install en migratie
 const TRANSACTIES_DDL = `
@@ -1272,6 +1272,28 @@ export function runMigrations(): void {
   // Idempotent via SQL-tekst-check op de bestaande tabel-definitie.
   if (currentVersion < 80) {
     ensureTrendPanelSeriesConsolidatieCheck(db);
+  }
+
+  // Stap 81: thema-kolom op instellingen voor light/dark/systeem (DIR-21:
+  // voorkeur in DB, niet in localStorage, zodat backup/restore meegaat).
+  // (Default was hier oorspronkelijk 'systeem'; in stap 82 verschoven naar
+  // 'donker'. Voor fresh installs draait stap 81 direct gevolgd door 82,
+  // dus kolom-default in 81 zelf doet er functioneel niet toe.)
+  if (currentVersion < 81) {
+    try {
+      db.exec(`ALTER TABLE instellingen ADD COLUMN thema TEXT NOT NULL DEFAULT 'donker'`);
+    } catch { /* kolom bestaat al */ }
+  }
+
+  // Stap 82: default-thema verschoven 'systeem' → 'donker' (gebruikersfeedback
+  // 02-05-2026: light-OS users die FBS openen kregen ongewild light-mode i.p.v.
+  // FBS' donker-first uitstraling). Migreer alleen waardes die nog op 'systeem'
+  // staan (= DB-default uit stap 81); expliciete 'licht'/'donker' keuzes
+  // blijven respecteerd. Idempotent.
+  if (currentVersion < 82) {
+    try {
+      db.exec(`UPDATE instellingen SET thema = 'donker' WHERE thema = 'systeem'`);
+    } catch { /* */ }
   }
 
   // Schema-versie vastleggen zodat toekomstige starts deze run overslaan

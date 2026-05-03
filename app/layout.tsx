@@ -31,7 +31,10 @@ import DevToolbar from "@/components/DevToolbar";
 import ContextMenuToolbar from "@/components/ContextMenuToolbar";
 import DevToolbarHotkey from "@/components/DevToolbarHotkey";
 import ZoomController from "@/components/ZoomController";
+import ThemeManager from "@/components/ThemeManager";
 import "./globals.css";
+
+const themaBootstrap = `(function(){try{var t=localStorage.getItem('thema')||'donker';var l=t==='licht'||(t==='systeem'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches);if(l)document.documentElement.setAttribute('data-theme','licht');}catch(e){}})();`;
 
 
 const geistSans = Geist({
@@ -55,8 +58,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="nl" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="nl" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themaBootstrap }} />
+      </head>
       <body>
+        <ThemeManager />
         <LoadingScreen>
           <SidebarProvider>
             <div className="app">

@@ -73,16 +73,16 @@ export default function ServerUpdateMelding() {
   const bezig = fase === 'triggering' || fase === 'wachten';
 
   return (
-    <div style={{ background: '#1e2e1e', borderBottom: '1px solid #314432' }}>
+    <div style={{ background: 'var(--green-dim)', borderBottom: '1px solid var(--border)' }}>
       <div style={{ padding: '10px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ color: '#cdd6f4', fontSize: '13px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ background: '#a6e3a1', color: '#1e1e2e', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, letterSpacing: 0.5 }}>
+        <span style={{ color: 'var(--text-h)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ background: 'var(--green)', color: '#fff', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, letterSpacing: 0.5 }}>
             SERVER
           </span>
           {fase === 'wachten' ? (
             <>Server wordt bijgewerkt naar <strong>{update.nieuwste}</strong>… (kan ~30s duren)</>
           ) : fase === 'fout' ? (
-            <>Server-update mislukt: <span style={{ color: '#f38ba8' }}>{foutMsg}</span></>
+            <>Server-update mislukt: <span style={{ color: 'var(--red)' }}>{foutMsg}</span></>
           ) : (
             <>Server-update beschikbaar: <strong>{update.huidig}</strong> → <strong>{update.nieuwste}</strong></>
           )}
@@ -91,7 +91,7 @@ export default function ServerUpdateMelding() {
           onClick={bijwerken}
           disabled={bezig}
           style={{
-            background: '#a6e3a1', color: '#1e1e2e', border: 'none', borderRadius: 6,
+            background: 'var(--green)', color: '#fff', border: 'none', borderRadius: 6,
             padding: '4px 14px', cursor: bezig ? 'wait' : 'pointer', fontWeight: 600, fontSize: 13,
             opacity: bezig ? 0.7 : 1,
           }}

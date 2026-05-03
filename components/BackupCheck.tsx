@@ -103,7 +103,8 @@ export default function BackupCheck() {
     const datum = new Date().toISOString().slice(0, 10);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `fbs-backup-lokaal-${datum}.json`; a.click();
+    a.href = url; a.download = `fbs-backup-lokaal-${datum}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
   }
 
@@ -114,8 +115,8 @@ export default function BackupCheck() {
   // Encryptie mismatch modal
   if (check.encryptieConfigMismatch) {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}>
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', minWidth: 380, maxWidth: 480, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--overlay)' }}>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', minWidth: 380, maxWidth: 480, boxShadow: 'var(--shadow-md)' }}>
           <div style={{ background: 'var(--orange, #f59e0b)', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <span style={{ fontWeight: 600, fontSize: 15, color: '#fff' }}>Versleutelingsconfiguratie gewijzigd</span>
@@ -128,7 +129,7 @@ export default function BackupCheck() {
               <p style={{ margin: '0 0 16px', fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.5 }}>
                 Klik op <strong>Opnieuw koppelen</strong> om het nieuwe wachtwoord in te voeren. Bestaande versleutelde backups van dit apparaat worden hierna onleesbaar.
               </p>
-              {mismatchFout && <p style={{ color: '#ef4444', margin: '0 0 12px', fontSize: 13 }}>{mismatchFout}</p>}
+              {mismatchFout && <p style={{ color: 'var(--red)', margin: '0 0 12px', fontSize: 13 }}>{mismatchFout}</p>}
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button onClick={() => setCheck(null)} disabled={mismatchBezig}
                   style={{ background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
@@ -158,7 +159,7 @@ export default function BackupCheck() {
                   style={{ background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', fontSize: 13, outline: 'none' }}
                   onKeyDown={e => { if (e.key === 'Enter' && koppelWachtwoord) document.getElementById('backupcheck-koppel-btn')?.click(); }}
                 />
-                {koppelFout && <p style={{ color: '#ef4444', margin: 0, fontSize: 13 }}>{koppelFout}</p>}
+                {koppelFout && <p style={{ color: 'var(--red)', margin: 0, fontSize: 13 }}>{koppelFout}</p>}
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
                 <button onClick={() => { setKoppelFase(false); setKoppelWachtwoord(''); setKoppelFout(null); setCheck(null); }}
@@ -190,8 +191,8 @@ export default function BackupCheck() {
   // Fork-melding
   if (check.forkDetected) {
     return (
-      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}>
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', minWidth: 380, maxWidth: 520, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--overlay)' }}>
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', minWidth: 380, maxWidth: 520, boxShadow: 'var(--shadow-md)' }}>
           <div style={{ background: 'var(--red)', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 18 }}>⚠️</span>
             <span style={{ fontWeight: 600, fontSize: 15, color: '#fff' }}>Synchronisatieconflict</span>
@@ -205,7 +206,7 @@ export default function BackupCheck() {
               <li><strong style={{ color: 'var(--text-h)' }}>Lokale versie behouden</strong> — de huidige data blijft. Bij de volgende backup wordt het andere apparaat bijgewerkt.</li>
               <li><strong style={{ color: 'var(--text-h)' }}>Beide downloaden</strong> — download de huidige lokale data als bestand om handmatig te vergelijken.</li>
             </ul>
-            {fout && <p style={{ color: '#ef4444', margin: '0 0 12px', fontSize: 13 }}>{fout}</p>}
+            {fout && <p style={{ color: 'var(--red)', margin: '0 0 12px', fontSize: 13 }}>{fout}</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               <button onClick={downloadLokaleBackup} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 6, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
                 Beide downloaden
@@ -230,8 +231,8 @@ export default function BackupCheck() {
 
   // Normale nieuwere-backup melding
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}>
-      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', minWidth: 380, maxWidth: 460, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--overlay)' }}>
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', minWidth: 380, maxWidth: 460, boxShadow: 'var(--shadow-md)' }}>
         <div style={{ background: 'var(--accent)', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 18 }}>📥</span>
           <span style={{ fontWeight: 600, fontSize: 15, color: '#fff' }}>Nieuwe backup beschikbaar</span>
@@ -243,7 +244,7 @@ export default function BackupCheck() {
             {check.bron === 'extern' ? 'beschikbaar via de externe backup locatie' : 'gesynchroniseerd'}.
             Wil je de database bijwerken?
           </p>
-          {fout && <p style={{ color: '#ef4444', margin: '0 0 12px', fontSize: 13 }}>{fout}</p>}
+          {fout && <p style={{ color: 'var(--red)', margin: '0 0 12px', fontSize: 13 }}>{fout}</p>}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
             <button onClick={() => setCheck(null)} disabled={bezig}
               style={{ background: 'var(--bg-card)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 20px', fontSize: 13, cursor: 'pointer' }}>

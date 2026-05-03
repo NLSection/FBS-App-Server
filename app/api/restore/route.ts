@@ -17,13 +17,13 @@ import { leesDiffFile, leesDiffMeta, lijstDiffDatums } from '@/lib/diff';
 import { pasToe, wisSchemaCache, type LogRij } from '@/lib/wijzigingUndo';
 import { zonderLogging } from '@/lib/wijzigingContext';
 import { categoriseerTransacties } from '@/lib/categorisatie';
+import { BESTANDS_REGEX } from '@/lib/backup-validatie';
 
 declare global {
   // eslint-disable-next-line no-var
   var _db: Database.Database | undefined;
 }
 
-const BESTANDS_REGEX = /^backup_(anker_)?[\d_-]+\.sqlite(\.enc)?\.gz$/;
 const ANKER_DATUM_REGEX = /^backup_anker_(\d{4}-\d{2}-\d{2})\.sqlite(\.enc)?\.gz$/;
 
 // Vervangt DB_PATH atomair via unlink+rename met retry-loop. Vermijdt de

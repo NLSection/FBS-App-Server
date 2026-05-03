@@ -57,6 +57,9 @@ export default function UpdateKanaalInstelling() {
       } else {
         setResultaat(`Je gebruikt de nieuwste versie (${data.huidig ?? 'onbekend'}).`);
       }
+      // Notify UpdateMelding banner-component zodat die direct refresht (anders
+      // verschijnt de banner pas na een app-herstart — gebruikersfeedback 02-05-2026).
+      window.dispatchEvent(new CustomEvent('updates-checked'));
     } catch {
       setResultaat('Kon niet controleren — geen verbinding of server niet bereikbaar.');
     } finally {

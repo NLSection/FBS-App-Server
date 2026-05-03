@@ -1,6 +1,6 @@
 {
   "name": "fbs-app",
-  "version": "0.5.5",
+  "version": "0.5.10",
   "private": true,
   "browserslist": [
     "Chrome >= 109",

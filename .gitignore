@@ -70,13 +70,4 @@ build.ps1
 .claude/scheduled_tasks.lock
 diagnose-broertje.txt
 
-# HC3L credentials (lokaal, nooit committen)
-.hc3-credentials.local
-.hc3-tmp/
-
-# HC3L Quick Apps + losse scratch — domein buiten FBS
-*.fqa
-hvacSystemHeat-ref.lua
-qwikchild.lua
-raw.json
 public/PotjesbeheerCard.old.png

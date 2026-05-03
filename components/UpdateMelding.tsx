@@ -27,7 +27,7 @@ function renderMarkdown(text: string) {
     const kopMatch = line.match(/^#{1,3}\s+(.+)/);
     if (kopMatch) {
       elements.push(
-        <div key={i} style={{ fontWeight: 700, color: '#cdd6f4', fontSize: '13px', marginTop: i > 0 ? '8px' : 0 }}>
+        <div key={i} style={{ fontWeight: 700, color: 'var(--text-h)', fontSize: '13px', marginTop: i > 0 ? '8px' : 0 }}>
           {formatInline(kopMatch[1])}
         </div>
       );
@@ -68,7 +68,7 @@ function formatInline(text: string): React.ReactNode {
       parts.push(<strong key={match.index}>{match[2]}</strong>);
     } else if (match[3]) {
       parts.push(
-        <code key={match.index} style={{ background: '#313244', padding: '1px 4px', borderRadius: '3px', fontSize: '11px' }}>
+        <code key={match.index} style={{ background: 'var(--bg-hover)', padding: '1px 4px', borderRadius: '3px', fontSize: '11px' }}>
           {match[3]}
         </code>
       );
@@ -92,30 +92,40 @@ export default function UpdateMelding() {
   const cacheKey = `fbs-update-check-${process.env.NEXT_PUBLIC_APP_VERSION ?? 'onbekend'}`;
 
   useEffect(() => {
-    // Cache alleen positieve resultaten — anders blijft "geen update" een uur
-    // lang actief terwijl er ondertussen een nieuwe release gepubliceerd is.
-    const cached = localStorage.getItem(cacheKey);
-    if (cached) {
-      try {
-        const { data, ts } = JSON.parse(cached);
-        if (data.updateBeschikbaar && Date.now() - ts < 3600000) {
-          setUpdate(data);
-          return;
+    function laad(forceer = false) {
+      if (!forceer) {
+        // Cache alleen positieve resultaten — anders blijft "geen update" een uur
+        // lang actief terwijl er ondertussen een nieuwe release gepubliceerd is.
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          try {
+            const { data, ts } = JSON.parse(cached);
+            if (data.updateBeschikbaar && Date.now() - ts < 3600000) {
+              setUpdate(data);
+              return;
+            }
+          } catch {}
         }
-      } catch {}
+      }
+      const url = forceer ? '/api/updates/check?forceer=1' : '/api/updates/check';
+      fetch(url, forceer ? { cache: 'no-store' } : undefined)
+        .then(r => r.json())
+        .then((data: UpdateInfo) => {
+          if (data.updateBeschikbaar) {
+            localStorage.setItem(cacheKey, JSON.stringify({ data, ts: Date.now() }));
+            setUpdate(data);
+          } else {
+            localStorage.removeItem(cacheKey);
+            setUpdate(null);
+          }
+        })
+        .catch(() => {});
     }
-    fetch('/api/updates/check')
-      .then(r => r.json())
-      .then((data: UpdateInfo) => {
-        if (data.updateBeschikbaar) {
-          localStorage.setItem(cacheKey, JSON.stringify({ data, ts: Date.now() }));
-          setUpdate(data);
-        } else {
-          localStorage.removeItem(cacheKey);
-        }
-      })
-      .catch(() => {});
-  }, []);
+    laad();
+    function onChecked() { laad(true); }
+    window.addEventListener('updates-checked', onChecked);
+    return () => window.removeEventListener('updates-checked', onChecked);
+  }, [cacheKey]);
 
   if (!update) return null;
 
@@ -144,8 +154,8 @@ export default function UpdateMelding() {
 
   return (
     <div style={{
-      background: '#1e1e2e',
-      borderBottom: '1px solid #313244',
+      background: 'var(--bg-surface)',
+      borderBottom: '1px solid var(--border)',
     }}>
       <div style={{
         padding: '10px 20px',
@@ -153,7 +163,7 @@ export default function UpdateMelding() {
         justifyContent: 'space-between',
         alignItems: 'center',
       }}>
-        <span style={{ color: '#cdd6f4', fontSize: '13px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ color: 'var(--text-h)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: 8 }}>
           {isTest && (
             <span style={{ background: '#f9e2af', color: '#1e1e2e', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, letterSpacing: 0.5 }}>TEST</span>
           )}
@@ -163,8 +173,8 @@ export default function UpdateMelding() {
           onClick={handleInstall}
           disabled={installing}
           style={{
-            background: '#89b4fa',
-            color: '#1e1e2e',
+            background: 'var(--accent)',
+            color: '#fff',
             border: 'none',
             borderRadius: '6px',
             padding: '4px 14px',
@@ -179,7 +189,7 @@ export default function UpdateMelding() {
       {nietLegeRegels.length > 0 && (
         <div style={{ padding: '0 20px 10px' }}>
           <div style={{
-            color: '#a6adc8',
+            color: 'var(--text)',
             fontSize: '12px',
             lineHeight: '1.5',
             ...(uitgeklapt ? { maxHeight: '40vh', overflowY: 'auto' as const } : {}),
@@ -192,7 +202,7 @@ export default function UpdateMelding() {
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#89b4fa',
+                color: 'var(--accent)',
                 cursor: 'pointer',
                 fontSize: '12px',
                 padding: '4px 0 0',

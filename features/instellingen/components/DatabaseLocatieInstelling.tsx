@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import InfoTooltip from '@/components/InfoTooltip';
+import WipBadge from '@/components/WipBadge';
 
 type DbMode = 'local' | 'remote';
 type DbModeConfig = { mode: DbMode; url: string | null };
@@ -131,6 +132,7 @@ export default function DatabaseLocatieInstelling() {
     <section>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <p className="section-title" style={{ margin: 0 }}>Database-locatie</p>
+        <WipBadge tekst="De Database-locatie instelling is nog in ontwikkeling en kan onverwacht gedrag vertonen." />
         <InfoTooltip volledigeBreedte tekst="Lokaal: SQLite-bestand op deze PC, geen netwerk nodig. Externe NAS: deze app verbindt met een FBS-server op een NAS — ideaal voor multi-device gebruik. Wisselen vereist een herstart van de app." />
       </div>
 
@@ -151,13 +153,35 @@ export default function DatabaseLocatieInstelling() {
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
               <input type="radio" name="db-locatie" checked={mode === 'remote'} onChange={() => setMode('remote')} style={{ marginTop: 3 }} />
               <div>
-                <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-h)' }}>Externe NAS</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: 'var(--text-h)' }}>Externe NAS</p>
+                  <WipBadge tekst="De Externe NAS-modus is nog in ontwikkeling en kan onverwacht gedrag vertonen." />
+                </div>
                 <p style={{ margin: '3px 0 0', fontSize: 12, color: 'var(--text-dim)' }}>Verbind met een FBS-server op een NAS in het lokale netwerk. De database leeft daar — alle apparaten zien dezelfde data.</p>
               </div>
             </label>
 
             {mode === 'remote' && (
               <div style={{ marginLeft: 30, display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 4 }}>
+                <details style={{ background: 'var(--bg-page, transparent)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', fontSize: 12, color: 'var(--text-dim)' }}>
+                  <summary style={{ cursor: 'pointer', color: 'var(--text-h)', fontWeight: 500 }}>Hoe werkt deze modus?</summary>
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, lineHeight: 1.5 }}>
+                    <p style={{ margin: 0 }}>
+                      Externe NAS gebruikt de <strong>FBS-Server</strong> applicatie die je via Docker draait — bijvoorbeeld op een Synology of QNAP NAS. De database (`fbs.db`) leeft op de NAS; alle apparaten met deze app verbinden ernaartoe en zien dezelfde data.
+                    </p>
+                    <p style={{ margin: 0 }}>
+                      Installatie via Container Manager met een <code>docker-compose.yml</code>:
+                    </p>
+                    <p style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <a href="https://raw.githubusercontent.com/NLSection/FBS-App-Server/main/docker-compose.yml" download="docker-compose.yml" style={{ color: 'var(--accent)' }}>
+                        ⬇ Download docker-compose.yml
+                      </a>
+                      <a href="https://github.com/NLSection/FBS-App-Server" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                        Volledige instructies (FBS-Server repo) →
+                      </a>
+                    </p>
+                  </div>
+                </details>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontSize: 12, color: 'var(--text-dim)' }}>Server-URL</span>
                   <input

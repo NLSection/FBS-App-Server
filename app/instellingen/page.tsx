@@ -10,6 +10,7 @@
 
 import MiniTourKnop from '@/components/MiniTourKnop';
 import AlgemeneInstellingen from '@/features/instellingen/components/AlgemeneInstellingen';
+import WeergaveInstellingen from '@/features/instellingen/components/WeergaveInstellingen';
 import DashboardInstellingen from '@/features/instellingen/components/DashboardInstellingen';
 import TransactiesTabsBeheer from '@/features/instellingen/components/TransactiesTabsBeheer';
 import RekeningenBeheer from '@/features/instellingen/components/RekeningenBeheer';
@@ -30,6 +31,7 @@ export default function InstellingenPage() {
     <div className="space-y-12 max-w-4xl">
       <h1 className="text-xl font-semibold">Instellingen</h1>
       <AlgemeneInstellingen />
+      <WeergaveInstellingen />
       <DashboardInstellingen />
       <section id="transacties-tabs" data-onboarding="inst-transacties">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>

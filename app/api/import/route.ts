@@ -180,18 +180,25 @@ async function importLogic(formData: FormData, bestanden: File[]) {
       .run(iban.trim().toUpperCase());
   }
 
-  // Auto-seed dashboard_tabs en transacties_tabs op eerste import
+  // Tabs aanmaken voor nieuwe rekeningen — voor elke import (eerste of vervolg).
+  // Dashboard_tabs heeft geen UNIQUE-constraint, dus filteren we via SELECT.
   if (bevestigdeRekeningen.length > 0) {
     const alleRekeningen = getRekeningen();
-    const dashTabCount = (db.prepare('SELECT COUNT(*) as n FROM dashboard_tabs').get() as { n: number }).n;
-    if (dashTabCount === 0) {
-      const stmt = db.prepare('INSERT INTO dashboard_tabs (type, entiteit_id, bls_tonen, cat_tonen, volgorde) VALUES (?, ?, 1, 1, ?)');
-      alleRekeningen.forEach((r, i) => stmt.run('rekening', r.id, i));
+
+    const bestaandeDashIds = new Set(
+      (db.prepare("SELECT entiteit_id FROM dashboard_tabs WHERE type = 'rekening'").all() as { entiteit_id: number }[])
+        .map(r => r.entiteit_id)
+    );
+    const dashStmt = db.prepare('INSERT INTO dashboard_tabs (type, entiteit_id, bls_tonen, cat_tonen, volgorde) VALUES (?, ?, 1, 1, ?)');
+    let dashVolgorde = (db.prepare('SELECT COALESCE(MAX(volgorde), -1) AS n FROM dashboard_tabs').get() as { n: number }).n + 1;
+    for (const r of alleRekeningen) {
+      if (!bestaandeDashIds.has(r.id)) dashStmt.run('rekening', r.id, dashVolgorde++);
     }
-    const trxTabCount = (db.prepare('SELECT COUNT(*) as n FROM transacties_tabs').get() as { n: number }).n;
-    if (trxTabCount === 0) {
-      const stmt = db.prepare('INSERT INTO transacties_tabs (type, entiteit_id, volgorde) VALUES (?, ?, ?)');
-      alleRekeningen.forEach((r, i) => stmt.run('rekening', r.id, i));
+
+    const trxStmt = db.prepare('INSERT OR IGNORE INTO transacties_tabs (type, entiteit_id, volgorde) VALUES (?, ?, ?)');
+    let trxVolgorde = (db.prepare('SELECT COALESCE(MAX(volgorde), -1) AS n FROM transacties_tabs').get() as { n: number }).n + 1;
+    for (const r of alleRekeningen) {
+      trxStmt.run('rekening', r.id, trxVolgorde++);
     }
   }
 

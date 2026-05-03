@@ -12,6 +12,7 @@ import 'react-resizable/css/styles.css';
 import MaandFilter from '@/components/MaandFilter';
 import InfoTooltip from '@/components/InfoTooltip';
 import type { Periode } from '@/lib/maandperiodes';
+import { useThemeTokens } from '@/lib/useThemeTokens';
 
 /* ── Types ──────────────────────────────────────────────────────── */
 
@@ -289,6 +290,7 @@ function LineLabelsAlongCurve({ panel, data, gridCols }: { panel: TrendPanel; da
 }
 
 const PanelChart = memo(function PanelChart({ panel, data, gridCols, colW }: { panel: TrendPanel; data: TrendData | null; gridCols: number; colW: number }) {
+  const tokens = useThemeTokens();
   // Labeldichtheid X-as: tekst-aware. Bepaal step + rotatie-hoek samen op basis van
   //   - perBucketPx (beschikbare ruimte per bucket)
   //   - tekstW: max bucket-label-breedte horizontaal (chars × charWidth)
@@ -398,7 +400,8 @@ const PanelChart = memo(function PanelChart({ panel, data, gridCols, colW }: { p
 
   const heeftRechts = data.series.some(s => s.as_zijde === 'rechts');
 
-  const asK = panel.as_kleur || '#2e3148';
+  const asK = panel.as_kleur || tokens.border;
+  const asTextK = tokens.text;
   // Waardelabels — aparte drempels per serietype.
   // Staaf: labels zitten boven elke staaf; per-staaf-breedte is krap bij meerdere series per bucket
   //        → agressiever roteren (en eerder 90°).
@@ -457,7 +460,7 @@ const PanelChart = memo(function PanelChart({ panel, data, gridCols, colW }: { p
         {panel.toon_gridlijnen && <CartesianGrid yAxisId="links" stroke={asK} strokeOpacity={0.7} horizontal vertical={false} syncWithTicks />}
         <XAxis
           dataKey="bucket"
-          tick={{ fontSize: 11, fill: '#a0a8c0' }}
+          tick={{ fontSize: 11, fill: asTextK }}
           stroke={asK}
           interval={0}
           angle={xLabelAngle}
@@ -466,36 +469,36 @@ const PanelChart = memo(function PanelChart({ panel, data, gridCols, colW }: { p
         />
         <YAxis
           yAxisId="links"
-          tick={{ fontSize: 11, fill: '#a0a8c0' }}
+          tick={{ fontSize: 11, fill: asTextK }}
           stroke={asK}
           scale={panel.y_links_log ? 'log' : 'auto'}
           domain={yDomain(panel.y_links_min, panel.y_links_max, 'links')}
           ticks={yTicks(panel.y_links_min, panel.y_links_max, panel.y_links_tick)}
           allowDataOverflow={panel.y_links_min != null || panel.y_links_max != null}
           tickFormatter={(v: number) => fmt(v)}
-          label={panel.y_as_links_label ? { value: panel.y_as_links_label, angle: -90, position: 'insideLeft', textAnchor: 'middle', fill: '#a0a8c0', fontSize: 11 } : undefined}
+          label={panel.y_as_links_label ? { value: panel.y_as_links_label, angle: -90, position: 'insideLeft', textAnchor: 'middle', fill: asTextK, fontSize: 11 } : undefined}
         />
         {heeftRechts && (
           <YAxis
             yAxisId="rechts"
             orientation="right"
-            tick={{ fontSize: 11, fill: '#a0a8c0' }}
+            tick={{ fontSize: 11, fill: asTextK }}
             stroke={asK}
             scale={panel.y_rechts_log ? 'log' : 'auto'}
             domain={yDomain(panel.y_rechts_min, panel.y_rechts_max, 'rechts')}
             ticks={yTicks(panel.y_rechts_min, panel.y_rechts_max, panel.y_rechts_tick)}
             allowDataOverflow={panel.y_rechts_min != null || panel.y_rechts_max != null}
             tickFormatter={(v: number) => fmt(v)}
-            label={panel.y_as_rechts_label ? { value: panel.y_as_rechts_label, angle: 90, position: 'insideRight', textAnchor: 'middle', fill: '#a0a8c0', fontSize: 11 } : undefined}
+            label={panel.y_as_rechts_label ? { value: panel.y_as_rechts_label, angle: 90, position: 'insideRight', textAnchor: 'middle', fill: asTextK, fontSize: 11 } : undefined}
           />
         )}
         {panel.toon_nullijn && (
-          <ReferenceLine y={0} yAxisId="links" stroke="#a0a8c0" strokeWidth={1.5} strokeOpacity={0.7} strokeDasharray="4 3" zIndex={-50} />
+          <ReferenceLine y={0} yAxisId="links" stroke={asTextK} strokeWidth={1.5} strokeOpacity={0.7} strokeDasharray="4 3" zIndex={-50} />
         )}
         <Tooltip
           formatter={(v) => fmt(Number(v))}
-          contentStyle={{ background: '#1a1d27', border: '1px solid #2e3148', borderRadius: 6, color: '#e8eaf6' }}
-          labelStyle={{ color: '#e8eaf6' }}
+          contentStyle={{ background: tokens.bgSurface, border: `1px solid ${tokens.border}`, borderRadius: 6, color: tokens.textH }}
+          labelStyle={{ color: tokens.textH }}
         />
         {panel.toon_legenda && (
           <Legend wrapperStyle={{ fontSize: 12 }} formatter={(value, entry) => {
