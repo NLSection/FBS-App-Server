@@ -1,0 +1,67 @@
+# FBS server — Synology Container Manager / docker-compose.
+#
+# Bevat ook Watchtower als sidecar voor zero-touch server-updates: de Tauri-
+# client triggert via een interne API-call op de FBS-server een Watchtower-
+# update wanneer de gebruiker op de "Server bijwerken"-knop klikt in de banner.
+#
+# **Netwerk-setup**:
+#  - FBS draait op `network_mode: host` omdat Synology DSM's project-bridges
+#    geen outbound NAT hebben (Plex/Sonarr/Bazarr volgen hetzelfde recept).
+#    FBS bindt direct op `PORT=3210`.
+#  - Watchtower draait wél in default bridge-mode met port-mapping
+#    `127.0.0.1:8181:8080` (HTTP API-poort van Watchtower is hardcoded 8080;
+#    `WATCHTOWER_HTTP_API_PORT` wordt niet gehonoreerd). Watchtower heeft geen
+#    outbound netwerk nodig — image-pulls lopen via de Docker socket.
+#  - FBS roept Watchtower aan via `http://127.0.0.1:8181` (host-loopback).
+version: "3.8"
+
+services:
+  fbs:
+    image: ghcr.io/nlsection/fbs-app-server:latest
+    container_name: fbs-server
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      # Bind-mount naar een share-folder zodat fbs.db zichtbaar is in File Station
+      # en handmatig te backuppen via DSM. **Belangrijk:** deze map moet vóór
+      # `Build` al bestaan, anders weigert Container Manager het project. Maak
+      # 'm aan via File Station of: `mkdir -p /volume2/Docker/FBS/data`.
+      - /volume2/Docker/FBS/data:/data
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/data/fbs.db
+      - PORT=3210
+      - HOSTNAME=0.0.0.0
+      - FBS_SERVER_DEPLOYMENT=docker
+      - FBS_WATCHTOWER_URL=http://127.0.0.1:8181
+      - FBS_WATCHTOWER_TOKEN=fbs-internal
+    labels:
+      # Watchtower watcht alleen containers met deze label.
+      - com.centurylinklabs.watchtower.enable=true
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3210/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: fbs-watchtower
+    restart: unless-stopped
+    # Default bridge-mode + port-mapping: Watchtower's HTTP API zit hardcoded
+    # op 8080 binnen de container; we mappen naar 127.0.0.1:8181 zodat alleen
+    # de FBS-container (host-mode) het kan bereiken, niet het LAN.
+    ports:
+      - "127.0.0.1:8181:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # Alleen containers met label 'watchtower.enable=true' (zie fbs hierboven)
+      - WATCHTOWER_LABEL_ENABLE=true
+      # HTTP-API enabled, geen scheduled poll (alleen on-demand via FBS).
+      - WATCHTOWER_HTTP_API_UPDATE=true
+      - WATCHTOWER_HTTP_API_TOKEN=fbs-internal
+      - WATCHTOWER_HTTP_API_PERIODIC_POLLS=false
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_NOTIFICATIONS=
