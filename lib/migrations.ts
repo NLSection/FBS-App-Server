@@ -45,7 +45,7 @@ import getDb from '@/lib/db';
 import { BACKUP_TABELLEN } from '@/config/backupTabellen';
 
 // Huidig schema-versienummer. Ophogen bij elke release met schema-wijzigingen.
-export const SCHEMA_VERSION = 82;
+export const SCHEMA_VERSION = 83;
 
 // Nieuwe transacties tabel DDL — gedeeld door fresh install en migratie
 const TRANSACTIES_DDL = `
@@ -1294,6 +1294,15 @@ export function runMigrations(): void {
     try {
       db.exec(`UPDATE instellingen SET thema = 'donker' WHERE thema = 'systeem'`);
     } catch { /* */ }
+  }
+
+  // Stap 83: actieve dashboard-tab persisteren in DB. Wordt gedeeld tussen
+  // dashboard en Vaste Posten-pagina zodat de groep-/rekeningfilter consistent
+  // is bij navigatie tussen die twee schermen.
+  if (currentVersion < 83) {
+    try {
+      db.exec(`ALTER TABLE instellingen ADD COLUMN actieve_dashboard_tab_id INTEGER`);
+    } catch { /* kolom bestaat al */ }
   }
 
   // Schema-versie vastleggen zodat toekomstige starts deze run overslaan

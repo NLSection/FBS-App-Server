@@ -8,6 +8,7 @@ import type { Periode } from '@/lib/maandperiodes';
 import { kiesStartPeriode } from '@/lib/kiesStartPeriode';
 import type { TransactieMetCategorie } from '@/lib/transacties';
 import MaandFilter from '@/components/MaandFilter';
+import { Calendar } from 'lucide-react';
 import CategoriePopup, { type PatronModalData } from '@/features/shared/components/CategoriePopup';
 import { maakNaamChips, analyseerOmschrijvingen } from '@/features/shared/utils/naamChips';
 
@@ -130,6 +131,9 @@ export default function VastePostenPage() {
   const [volgordeGewijzigd, setVolgordeGewijzigd] = useState(false);
   const origineelGroepen              = useRef<VastePostGroep[]>([]);
   const initieleDataGeladen           = useRef(false);
+  const [dashboardTabs, setDashboardTabs] = useState<{ id: number; type: 'groep' | 'rekening'; entiteit_id: number; naam: string }[]>([]);
+  const [actieveTabId, setActieveTabId]   = useState<number | null>(null);
+  const [overigeOpen, setOverigeOpen]     = useState(false);
 
   useEffect(() => {
     // Periodes + overzicht (huidige periode) parallel ophalen
@@ -138,10 +142,17 @@ export default function VastePostenPage() {
       fetch('/api/vaste-posten-overzicht').then(r => r.ok ? r.json() : null) as Promise<VastePostenOverzicht | null>,
       fetch('/api/lookup-data').then(r => r.ok ? r.json() : null) as Promise<{ budgettenPotjes?: unknown[] | null; rekeningen?: unknown[] | null; uniekeCategorieen?: string[] | null } | null>,
       fetch('/api/vp-groepen').then(r => r.ok ? r.json() : []),
-      fetch('/api/instellingen').then(r => r.ok ? r.json() : null).catch(() => null) as Promise<{ gebruikersProfiel?: string | null } | null>,
-    ]).then(([ps, overzicht, lookup, vpg, inst]) => {
+      fetch('/api/instellingen').then(r => r.ok ? r.json() : null).catch(() => null) as Promise<{ gebruikersProfiel?: string | null; actieveDashboardTabId?: number | null } | null>,
+      fetch('/api/dashboard-tabs').then(r => r.ok ? r.json() : []).catch(() => []) as Promise<{ id: number; type: 'groep' | 'rekening'; entiteit_id: number; naam: string }[]>,
+    ]).then(([ps, overzicht, lookup, vpg, inst, tabsData]) => {
       const p = inst?.gebruikersProfiel;
       setGebruikersProfiel((p === 'potjesbeheer' || p === 'uitgavenbeheer' || p === 'handmatig') ? p : null);
+      setDashboardTabs(tabsData);
+      if (tabsData.length > 0) {
+        const opgeslagen = inst?.actieveDashboardTabId ?? null;
+        const gevonden = opgeslagen != null ? tabsData.find(t => t.id === opgeslagen) : null;
+        setActieveTabId(gevonden ? gevonden.id : tabsData[0].id);
+      }
       setPeriodes(ps);
       setBudgettenPotjes((lookup?.budgettenPotjes ?? []) as Parameters<typeof setBudgettenPotjes>[0]);
       setRekeningen((lookup?.rekeningen ?? []) as Parameters<typeof setRekeningen>[0]);
@@ -187,6 +198,14 @@ export default function VastePostenPage() {
     window.addEventListener('vaste-posten-inst-applied', onApplied);
     return () => window.removeEventListener('vaste-posten-inst-applied', onApplied);
   }, [geselecteerdePeriode, laden]);
+
+  // Click-outside voor de Overige uitgaven uitsplitsing-popover.
+  useEffect(() => {
+    if (!overigeOpen) return;
+    function onClick() { setOverigeOpen(false); }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [overigeOpen]);
 
   const toggleRij = (id: number) => setOpenRijen(prev => {
     const next = new Set(prev);
@@ -373,9 +392,22 @@ export default function VastePostenPage() {
       const subs: { naam: string; inActieveRegel: boolean }[] = subcatRes.ok ? await subcatRes.json() : [];
       const subcatOpties = subs.filter(s => s.inActieveRegel).map(s => s.naam);
       const subcatGearchiveerd = subs.filter(s => !s.inActieveRegel).map(s => s.naam);
-      setPatronModal({ transactie: trx as unknown as TransactieMetCategorie, toelichting: trx.toelichting ?? '', nieuweCat: trx.categorie ?? '', catNieuw: false, nieuweCatRekeningId: '', subcategorie: trx.subcategorie ?? '', subcatOpties, subcatGearchiveerd, subcatNieuw: false, naamChips, gekozenNaamChips, chips, gekozenWoorden, scope: trx.categorie_id != null ? 'alle' : 'enkel', bedragMin: regel?.bedrag_min ?? null, bedragMax: regel?.bedrag_max ?? null });
+      // VP-trx levert datum=effectief + originele_datum=import. Popup verwacht
+      // datum=import + datum_aanpassing=override → omzetten zodat de popup de
+      // datum-wijziging herkent en herstel-knop toont.
+      const trxMC = {
+        ...trx,
+        datum: trx.originele_datum ?? trx.datum,
+        datum_aanpassing: trx.originele_datum ? trx.datum : null,
+      } as unknown as TransactieMetCategorie;
+      setPatronModal({ transactie: trxMC, toelichting: trx.toelichting ?? '', nieuweCat: trx.categorie ?? '', catNieuw: false, nieuweCatRekeningId: '', subcategorie: trx.subcategorie ?? '', subcatOpties, subcatGearchiveerd, subcatNieuw: false, naamChips, gekozenNaamChips, chips, gekozenWoorden, scope: trx.categorie_id != null ? 'alle' : 'enkel', bedragMin: regel?.bedrag_min ?? null, bedragMax: regel?.bedrag_max ?? null });
     } else {
-      setPatronModal({ transactie: trx as unknown as TransactieMetCategorie, toelichting: trx.toelichting ?? '', nieuweCat: '', catNieuw: false, nieuweCatRekeningId: '', subcategorie: '', subcatOpties: [], subcatNieuw: false, naamChips, gekozenNaamChips: [], chips, gekozenWoorden: [], scope: 'alle', bedragMin: null, bedragMax: null });
+      const trxMC = {
+        ...trx,
+        datum: trx.originele_datum ?? trx.datum,
+        datum_aanpassing: trx.originele_datum ? trx.datum : null,
+      } as unknown as TransactieMetCategorie;
+      setPatronModal({ transactie: trxMC, toelichting: trx.toelichting ?? '', nieuweCat: '', catNieuw: false, nieuweCatRekeningId: '', subcategorie: '', subcatOpties: [], subcatNieuw: false, naamChips, gekozenNaamChips: [], chips, gekozenWoorden: [], scope: 'alle', bedragMin: null, bedragMax: null });
     }
   }
 
@@ -464,6 +496,34 @@ export default function VastePostenPage() {
         ><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M6.5 1h3l.5 2.1a5.5 5.5 0 0 1 1.8 1l2-.7 1.5 2.6-1.5 1.4a5.5 5.5 0 0 1 0 2.1l1.5 1.4-1.5 2.6-2-.7a5.5 5.5 0 0 1-1.8 1L9.5 15h-3l-.5-2.1a5.5 5.5 0 0 1-1.8-1l-2 .7L.7 10l1.5-1.4a5.5 5.5 0 0 1 0-2.1L.7 5.1l1.5-2.6 2 .7a5.5 5.5 0 0 1 1.8-1z" /><circle cx="8" cy="8" r="2.5" /></svg></button>
       </div>
 
+      {/* Tabbalk — gedeeld met dashboard via instellingen.actieveDashboardTabId */}
+      {dashboardTabs.length > 1 && (
+        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--border)' }}>
+          {dashboardTabs.map(t => (
+            <button key={t.id} onClick={async () => {
+              setActieveTabId(t.id);
+              // PUT moet voltooien vóór de refetch — anders leest het overzicht-endpoint
+              // nog de oude actieve tab uit instellingen (race condition).
+              try {
+                await fetch('/api/instellingen', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actieveDashboardTabId: t.id }) });
+              } catch { /* */ }
+              try { window.dispatchEvent(new CustomEvent('dashboard-tab-changed', { detail: { id: t.id } })); } catch { /* */ }
+              laden(geselecteerdePeriode, true);
+            }}
+              style={{
+                padding: '8px 20px', fontSize: 13, fontWeight: actieveTabId === t.id ? 600 : 400,
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: actieveTabId === t.id ? 'var(--accent)' : 'var(--text-dim)',
+                borderBottom: actieveTabId === t.id ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: -2, transition: 'color 0.15s, border-color 0.15s',
+              }}
+            >
+              {t.naam}
+            </button>
+          ))}
+        </div>
+      )}
+
       {laadt ? (
         <div className="loading">Vaste posten worden geladen…</div>
       ) : fout ? (
@@ -471,19 +531,111 @@ export default function VastePostenPage() {
       ) : !data ? null : (
         <>
           {/* Totalen — horizontaal boven de tabellen */}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-            {[
-              { label: 'Totale Inkomsten', bedrag: data.totaalInkomsten, kleur: 'var(--green)' },
-              { label: 'Totale Uitgaven',  bedrag: data.totaalUitgaven,  kleur: 'var(--red)'   },
-              { label: 'Nog te gaan', bedrag: data.nogTeGaan,     kleur: 'var(--text-h)' },
-              { label: 'Vrij te besteden', bedrag: data.totaalInkomsten - data.totaalUitgaven, kleur: data.totaalInkomsten - data.totaalUitgaven >= 0 ? 'var(--green)' : 'var(--red)' },
-            ].map(({ label, bedrag, kleur }) => (
-              <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', flex: '1 1 auto', minWidth: 140 }}>
-                <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 3 }}>{label}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: kleur, fontVariantNumeric: 'tabular-nums' }}>{fmt(bedrag)}</div>
+          {(() => {
+            // Overige uitgaven = netto saldo van niet-VP categorieën uit de CAT-tabel
+            // (per actieve dashboard-tab gefilterd). Begroot (sub) = Inkomsten − Vaste uitgaven.
+            // Saldo (hoofd) = begroot + overige uitgaven.
+            const overige = data.totaalSaldoVrij;
+            const begroot = data.totaalInkomsten - data.totaalUitgaven;
+            const saldo   = begroot + overige;
+            const saldoKleur = saldo >= 0 ? 'var(--green)' : 'var(--red)';
+            // Lopende maand vs afgesloten: bepaalt het label en de framing.
+            const maandAfgesloten = data.vandaag > data.periodeEind;
+            const saldoLabel = !maandAfgesloten
+              ? 'Vrij te besteden'
+              : saldo >= 0 ? 'Bespaard' : 'Tekort';
+            const blokken = [
+              { label: 'Inkomsten',         bedrag: data.totaalInkomsten, kleur: 'var(--green)' },
+              { label: 'Vaste uitgaven',    bedrag: data.totaalUitgaven,  kleur: 'var(--red)'   },
+              { label: 'Nog te verwachten', bedrag: data.nogTeGaan,       kleur: 'var(--text-h)' },
+            ];
+            return (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+                {blokken.map(({ label, bedrag, kleur }) => (
+                  <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', flex: '1 1 auto', minWidth: 140 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 3 }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: kleur, fontVariantNumeric: 'tabular-nums' }}>{fmt(bedrag)}</div>
+                  </div>
+                ))}
+                {/* Overige uitgaven — met klikbare uitsplitsing per categorie */}
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', flex: '1 1 auto', minWidth: 140, position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>Overige uitgaven</div>
+                    <button
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={() => setOverigeOpen(o => !o)}
+                      title="Toon uitsplitsing per categorie"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', padding: 0, lineHeight: 0, display: 'flex', alignItems: 'center' }}
+                      onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+                      onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M8 7v4M8 5v.01" strokeLinecap="round"/></svg>
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: overige >= 0 ? 'var(--green)' : 'var(--red)', fontVariantNumeric: 'tabular-nums' }}>{fmt(overige)}</div>
+                  {overigeOpen && (
+                    <div
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.35)', padding: '10px 12px', minWidth: 320, maxWidth: 460, fontSize: 12 }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--text-h)' }}>Uitsplitsing per categorie</span>
+                        <button onClick={() => setOverigeOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-dim)', fontSize: 16, lineHeight: 1, padding: 0 }}>×</button>
+                      </div>
+                      {data.overigeUitsplitsing.length === 0 ? (
+                        <div style={{ color: 'var(--text-dim)' }}>Geen niet-VP categorieën in deze periode.</div>
+                      ) : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontVariantNumeric: 'tabular-nums' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-dim)', fontWeight: 500, fontSize: 11 }}>
+                              <th style={{ textAlign: 'left', padding: '4px 6px 4px 0' }}>Categorie</th>
+                              <th style={{ textAlign: 'right', padding: '4px 6px' }}>Uitgegeven</th>
+                              {data.budgetbeheerActief && <th style={{ textAlign: 'right', padding: '4px 6px' }}>Uit potje</th>}
+                              <th style={{ textAlign: 'right', padding: '4px 0 4px 6px' }}>Netto</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {data.overigeUitsplitsing.map(r => (
+                              <tr key={r.categorie} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '4px 6px 4px 0', color: 'var(--text-h)' }}>{r.categorie}</td>
+                                <td style={{ padding: '4px 6px', textAlign: 'right', color: bedragKleur(r.catTotaal) }}>{fmt(r.catTotaal)}</td>
+                                {data.budgetbeheerActief && <td style={{ padding: '4px 6px', textAlign: 'right', color: r.blsCorrectie === 0 ? 'var(--text-dim)' : bedragKleur(r.blsCorrectie) }}>{r.blsCorrectie === 0 ? '—' : fmt(r.blsCorrectie)}</td>}
+                                <td style={{ padding: '4px 0 4px 6px', textAlign: 'right', fontWeight: 600, color: bedragKleur(r.netto) }}>{fmt(r.netto)}</td>
+                              </tr>
+                            ))}
+                            {(() => {
+                              const totaalUitgegeven = data.overigeUitsplitsing.reduce((s, r) => s + r.catTotaal, 0);
+                              return (
+                                <tr>
+                                  <td style={{ padding: '6px 6px 0 0', fontWeight: 600, color: 'var(--text-h)' }}>Totaal</td>
+                                  <td style={{ padding: '6px 6px 0 6px', textAlign: 'right', fontWeight: 600, color: bedragKleur(totaalUitgegeven) }}>{fmt(totaalUitgegeven)}</td>
+                                  {data.budgetbeheerActief && <td></td>}
+                                  <td style={{ padding: '6px 0 0 6px', textAlign: 'right', fontWeight: 700, color: bedragKleur(overige) }}>{fmt(overige)}</td>
+                                </tr>
+                              );
+                            })()}
+                          </tbody>
+                        </table>
+                      )}
+                      {data.budgetbeheerActief && (
+                        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-dim)', lineHeight: 1.4 }}>
+                          Uit potje = bedragen die vanuit het bijbehorende potje zijn omgeboekt om de uitgave te dekken. Een volledig gedekte categorie saldoot naar 0.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {/* Vrij te besteden — saldo (groot) + begroot (klein eronder) */}
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', flex: '1 1 auto', minWidth: 140 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginBottom: 3 }}>{saldoLabel}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: saldoKleur, fontVariantNumeric: 'tabular-nums' }}>{fmt(saldo)}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontVariantNumeric: 'tabular-nums' }}>
+                    van {fmt(begroot)} begroot
+                  </div>
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })()}
 
           {/* Groepen */}
           <div style={{ minWidth: 0 }}>
@@ -870,12 +1022,29 @@ export default function VastePostenPage() {
 function VastePostCellen({ item }: { item: VastePostItem }) {
   const geweest   = item.status === 'geweest';
   const ontbreekt = item.status === 'ontbreekt';
-  const statusKleur = geweest ? 'var(--green)' : ontbreekt ? 'var(--red)' : 'var(--border)';
+  const verlopen  = item.status === 'verlopen';
+  const statusKleur =
+    geweest   ? 'var(--green)' :
+    ontbreekt ? 'var(--red)' :
+    verlopen  ? 'var(--accent)' :
+                'var(--border)';
+  const statusUitleg =
+    geweest   ? 'Bevestigd via transactie-import' :
+    ontbreekt ? 'Niet voorgekomen in deze maand' :
+    verlopen  ? 'Verwachte datum verstreken — transactie nog niet geïmporteerd' :
+                'Nog te verwachten';
 
   return (
     <>
-      {/* Drag handle spacer + status streep */}
-      <td style={{ width: 20, borderLeft: `3px solid ${statusKleur}` }} />
+      {/* Drag handle spacer + status streep — tooltip via native title */}
+      <td className="vp-marker-cell">
+        <div
+          className="vp-marker"
+          style={{ ['--vp-marker-color' as string]: statusKleur }}
+          title={statusUitleg}
+          aria-label={statusUitleg}
+        />
+      </td>
       {/* Datum */}
       <td style={{ padding: '1px 8px 1px 9px', whiteSpace: 'nowrap' }}>
         {item.datum ? (
@@ -989,7 +1158,15 @@ function Subtabel({ transacties, onBewerk, menuItems, openMenu, openContextMenu 
           const omschrijving = [trx.omschrijving_1, trx.omschrijving_2, trx.omschrijving_3].filter(Boolean).join(' ') || null;
           return (
           <tr key={trx.id} onClick={e => onBewerk(trx, e)} onContextMenu={e => openContextMenu(e, menuItems(trx))} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer' }}>
-            <td style={{ padding: '2px 10px', whiteSpace: 'nowrap' }}>{trx.datum ? fmtDatum(trx.datum) : '—'}</td>
+            <td
+              style={{ padding: '2px 10px', whiteSpace: 'nowrap', color: trx.originele_datum ? 'var(--accent)' : undefined }}
+              title={trx.originele_datum ? `Origineel geboekt op ${fmtDatum(trx.originele_datum)}` : undefined}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <span>{trx.datum ? fmtDatum(trx.datum) : '—'}</span>
+                {trx.originele_datum && <Calendar size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+              </div>
+            </td>
             <td style={{ padding: '2px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trx.naam_tegenpartij ?? '—'}</td>
             <td title={omschrijving ?? undefined} style={{ padding: '2px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{omschrijving ?? '—'}</td>
             <td style={{ padding: '2px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: bedragKleur(trx.bedrag) }}>{fmt(trx.bedrag)}</td>

@@ -1157,9 +1157,16 @@ const [patronModal, setPatronModal]                   = useState<PatronModalData
                             style={{ color: t.datum_aanpassing ? 'var(--accent)' : 'var(--text-dim)', fontSize: 12, whiteSpace: 'nowrap' }}
                             title={t.datum_aanpassing ? `Origineel geboekt op ${formatDatum(t.datum)}` : undefined}
                           >
-                            {t.datum_aanpassing && <Calendar size={11} style={{ marginRight: 3, verticalAlign: 'middle' }} />}
-                            {formatDatum(t.datum_aanpassing ?? t.datum)}
-                            {t.is_nieuw === 1 && <span className="badge" style={{ marginLeft: 4, fontSize: 9, padding: '0px 4px', background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>Nieuw</span>}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                              <span>{formatDatum(t.datum_aanpassing ?? t.datum)}</span>
+                              {t.datum_aanpassing && <Calendar size={11} />}
+                              {t.is_nieuw === 1 && <span className="badge" style={{ marginLeft: 1, fontSize: 9, padding: '0px 4px', background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>Nieuw</span>}
+                            </div>
+                            {t.datum_aanpassing && (
+                              <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 1, fontWeight: 400 }}>
+                                origineel: {formatDatum(t.datum)}
+                              </div>
+                            )}
                           </td>
                         )}
                         {zk.has('iban_bban') && (

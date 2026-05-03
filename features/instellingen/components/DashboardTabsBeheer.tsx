@@ -136,7 +136,7 @@ export default function DashboardTabsBeheer({ compact = false }: { compact?: boo
     laadEigen();
   }
 
-  const tooltipTekst = 'Bepaal welke rekeningen en rekeninggroepen als tabblad op het Dashboard verschijnen. Het meest linkse tabblad is de startpagina van de app. Per tabblad kun je instellen of de Balans Budgetten en Potjes tabel en de Overzicht per Categorie tabel getoond worden, en of rijen standaard uitgeklapt worden.';
+  const tooltipTekst = 'Bepaal welke rekeningen en rekeninggroepen als tabblad op het Dashboard verschijnen. Het meest linkse tabblad is de startpagina van de app. Per tabblad kun je instellen of de Balans Budgetten en Potjes tabel en de Overzicht per Categorie tabel getoond worden, en of rijen standaard uitgeklapt worden. De Vaste Posten-pagina volgt dezelfde tab-keuze: switch je hier van tabblad, dan zie je daar de Vaste Posten en totalenblokken voor diezelfde rekeningen of groep.';
 
   return (
     <div data-onboarding="inst-dashboard-tabs">

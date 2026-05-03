@@ -21,10 +21,15 @@
       if (l) document.documentElement.setAttribute('data-theme', 'licht');
       if (document.body) document.body.classList.remove('fbs-cloak');
     }
+    function setVersie(v) {
+      var el = document.getElementById('fbs-versie');
+      if (el && v) el.textContent = 'v' + v;
+    }
     function viaTauri() {
       var inv = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
       if (!inv) return false;
       inv('get_thema').then(function (t) { pas(t || 'donker'); }).catch(function () { pas('donker'); });
+      inv('get_app_version').then(setVersie).catch(function () {});
       return true;
     }
     if (!viaTauri()) {
@@ -114,6 +119,14 @@
     color: var(--splash-muted);
     line-height: 1;
   }
+  .versie {
+    font-size: 10px;
+    color: var(--splash-muted);
+    margin-top: 4px;
+    line-height: 1;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+  }
   .spinner {
     width: 20px;
     height: 20px;
@@ -146,6 +159,7 @@
     <img class="made-by-logo" src="S-Logo.png" alt="" draggable="false" />
     <span class="made-by-text">by Section Labs</span>
   </div>
+  <span class="versie" id="fbs-versie"></span>
   <div class="spinner" style="margin-top: 16px;"></div>
 </div>
 <script>

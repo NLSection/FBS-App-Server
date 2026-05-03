@@ -41,7 +41,8 @@ export function GET(request: NextRequest) {
     }
 
     const gefilterd = transacties.filter(t => {
-      if (t.type === 'omboeking-af' || t.type === 'omboeking-bij') return false;
+      // Omboekingen alleen skippen als ze de default 'Omboekingen'-categorie hebben.
+      if ((t.type === 'omboeking-af' || t.type === 'omboeking-bij') && t.categorie === 'Omboekingen') return false;
       if (groepIbans && (!t.iban_bban || !groepIbans.has(t.iban_bban))) return false;
       if (subcategorie !== '') return (t.subcategorie ?? '') === subcategorie;
       return true;
@@ -58,6 +59,7 @@ export function GET(request: NextRequest) {
     return NextResponse.json(gefilterd.map(t => ({
       id:              t.id,
       datum:           t.datum_aanpassing ?? t.datum,
+      originele_datum: t.datum_aanpassing ? (t.datum ?? null) : null,
       naam_tegenpartij: t.naam_tegenpartij,
       omschrijving:    [t.omschrijving_1, t.omschrijving_2, t.omschrijving_3].filter(Boolean).join(' '),
       bedrag:          t.bedrag,

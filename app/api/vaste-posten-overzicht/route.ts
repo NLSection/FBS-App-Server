@@ -7,12 +7,17 @@ import { getPeriodeConfigs, msdVoorPeriode } from '@/lib/periodeConfigs';
 import { getVpGroepen } from '@/lib/vpGroepen';
 import { getVpVolgorde } from '@/lib/vpVolgorde';
 import { getVpNegeer } from '@/lib/vpNegeer';
+import { getDashboardOverzicht } from '@/lib/dashboard';
+import { getDashboardTabs } from '@/lib/dashboardTabs';
+import { getRekeningGroep } from '@/lib/rekeningGroepen';
+import { getRekeningen } from '@/lib/rekeningen';
 
-export type VastePostStatus = 'geweest' | 'verwacht' | 'ontbreekt';
+export type VastePostStatus = 'geweest' | 'verwacht' | 'verlopen' | 'ontbreekt';
 
 export interface VastePostTransactie {
   id: number;
   datum: string;
+  originele_datum: string | null; // import-datum als de transactie een aangepaste boekdatum heeft, anders null
   periode: string; // YYYY-MM — periode (op basis van maand_start_dag) waarin de transactie valt
   naam_tegenpartij: string | null;
   omschrijving_1: string | null;
@@ -66,9 +71,13 @@ export interface VastePostenOverzicht {
   afwijkingDrempel: number;
   groepen: VastePostGroep[];
   negeerde: NegeerItem[];
-  totaalInkomsten: number;
-  totaalUitgaven: number;
+  totaalInkomsten: number;        // alle positieve transacties in periode (excl. omboekingen)
+  totaalUitgaven: number;          // werkelijk uitgegeven aan VP (geweest + verlopen)
   nogTeGaan: number;
+  totaalOverigeUitgaven: number;   // alle negatieve transacties in NIET-VP categorieën (excl. omboekingen)
+  totaalSaldoVrij: number;         // saldo van niet-VP gecategoriseerde transacties (CAT-tabel som excl. VP)
+  overigeUitsplitsing: { categorie: string; catTotaal: number; blsCorrectie: number; netto: number }[];
+  budgetbeheerActief: boolean;     // bepaalt of BLS-correctie wordt toegepast
 }
 
 const MAANDEN = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
@@ -219,8 +228,35 @@ export function GET(req: NextRequest) {
     const fetchVan = lookbackStart < subtabelMinStart ? lookbackStart : subtabelMinStart;
     const fetchTot = periodeEind   > subtabelMaxEind  ? periodeEind   : subtabelMaxEind;
 
-    // Alle relevante transacties ophalen — direct gefilterd op Vaste Posten in SQL
-    const alleTrx = getTransacties({ datum_van: fetchVan, datum_tot: fetchTot, categorie: 'Vaste Posten' });
+    // Tab-filter: actieve dashboard-tab uit instellingen, gedeeld met dashboard.
+    // Default = eerste tab (matched dashboard-gedrag bij eerste opening).
+    const tabs = getDashboardTabs();
+    const actieveTab = inst.actieveDashboardTabId != null
+      ? tabs.find(t => t.id === inst.actieveDashboardTabId) ?? tabs[0]
+      : tabs[0];
+
+    let filterIbans: Set<string> | null = null;
+    let filterGroepId: number | undefined;
+    let filterRekeningId: number | undefined;
+    if (actieveTab) {
+      const rekeningen = getRekeningen();
+      if (actieveTab.type === 'groep') {
+        filterGroepId = actieveTab.entiteit_id;
+        const groep = getRekeningGroep(actieveTab.entiteit_id);
+        filterIbans = groep
+          ? new Set(rekeningen.filter(r => groep.rekening_ids.includes(r.id)).map(r => r.iban))
+          : new Set();
+      } else {
+        filterRekeningId = actieveTab.entiteit_id;
+        const rek = rekeningen.find(r => r.id === actieveTab.entiteit_id);
+        filterIbans = rek ? new Set([rek.iban]) : new Set();
+      }
+    }
+
+    // Alle relevante transacties ophalen — direct gefilterd op Vaste Posten in SQL,
+    // daarna in JS op tab-ibans (zodat VP-items per tab gescoped zijn).
+    const alleTrx = getTransacties({ datum_van: fetchVan, datum_tot: fetchTot, categorie: 'Vaste Posten' })
+      .filter(t => !filterIbans || (t.iban_bban != null && filterIbans.has(t.iban_bban)));
 
     // Map elke transactie naar een regelId
     interface TrxMapped { regelId: number; datum: string; bedrag: number; t: ReturnType<typeof getTransacties>[0] }
@@ -298,7 +334,12 @@ export function GET(req: NextRequest) {
               }
               return getPeriodeBereik(nJ, nM, msdVoorPeriode(configs, nJ, nM)).start;
             })();
-      const nieuw = !trx.some(t => t.datum >= nieuwDrempelStart && t.datum < periodeStart);
+      // Eerste maand van de ingestelde termijn overslaan: dan is het lookback-
+      // venster leeg (bv. 'jaar' + januari → window collapseert tot 0 dagen)
+      // waardoor alles ten onrechte als 'nieuw' wordt gemarkeerd.
+      const nieuw = nieuwDrempelStart >= periodeStart
+        ? false
+        : !trx.some(t => t.datum >= nieuwDrempelStart && t.datum < periodeStart);
 
       // Werkelijk bedrag + datum voor geselecteerde periode
       const werkelijkBedrag = gesTrx.length > 0
@@ -346,11 +387,19 @@ export function GET(req: NextRequest) {
         : null;
 
       // Status
+      // - geweest:   transactie bevestigd via CSV-import
+      // - ontbreekt: periode is al voorbij, geen match → blijft niet meetellen
+      // - verlopen:  huidige periode, verwachte datum is al verstreken maar
+      //              transactie nog niet binnen (vermoedelijk gebeurd, telt
+      //              niet meer mee in 'nog te gaan')
+      // - verwacht:  huidige periode, verwachte datum nog niet bereikt
       let status: VastePostStatus;
       if (werkelijkBedrag !== null) {
         status = 'geweest';
       } else if (periodeEind < vandaag) {
         status = 'ontbreekt';
+      } else if (verwachteDatum && verwachteDatum < vandaag) {
+        status = 'verlopen';
       } else {
         status = 'verwacht';
       }
@@ -367,6 +416,7 @@ export function GET(req: NextRequest) {
           return {
             id: tm.t.id,
             datum: tm.datum,
+            originele_datum: tm.t.datum_aanpassing ? (tm.t.datum ?? null) : null,
             periode,
             naam_tegenpartij: tm.t.naam_tegenpartij ?? null,
             omschrijving_1: tm.t.omschrijving_1 ?? null,
@@ -444,16 +494,70 @@ export function GET(req: NextRequest) {
         return a.subcategorie.localeCompare(b.subcategorie);
       });
 
-    // Totalen
+    // Inkomsten + VP-uitgaven blokken: berekend uit dezelfde VP-items die
+    // op de pagina getoond worden (dus geen losse transactie-aggregatie).
+    //  - totaalInkomsten = som positieve VP-items (salaris e.d.)
+    //  - totaalUitgaven  = werkelijk uitgegeven aan VP (geweest + verlopen)
+    //  - nogTeGaan       = vp 'verwacht' (toekomstig deze maand)
     let totaalInkomsten = 0, totaalUitgaven = 0, nogTeGaan = 0;
     for (const item of items) {
       const b = item.bedrag ?? 0;
-      if (b > 0) totaalInkomsten += b;
-      else if (b < 0) {
-        totaalUitgaven += Math.abs(b);
-        if (item.status !== 'geweest') nogTeGaan += Math.abs(b);
+      if (b > 0) {
+        totaalInkomsten += b;
+      } else if (b < 0) {
+        const abs = Math.abs(b);
+        if (item.status === 'geweest' || item.status === 'verlopen') totaalUitgaven += abs;
+        if (item.status === 'verwacht') nogTeGaan += abs;
       }
     }
+
+    // Overige uitgaven blok: enige blok dat buiten de VP-items kijkt —
+    // negatieve transacties in niet-VP categorieën, excl. omboekingen.
+    const periodeTrx = getTransacties({ datum_van: periodeStart, datum_tot: periodeEind })
+      .filter(t => t.type !== 'omboeking-af' && t.type !== 'omboeking-bij' && t.categorie !== 'Omboekingen')
+      .filter(t => !filterIbans || (t.iban_bban != null && filterIbans.has(t.iban_bban)));
+    let totaalOverigeUitgaven = 0;
+    for (const t of periodeTrx) {
+      const b = t.bedrag ?? 0;
+      if (b < 0 && t.categorie !== 'Vaste Posten') totaalOverigeUitgaven += Math.abs(b);
+    }
+
+    // Saldo "Overige uitgaven" = CAT-totaal excl Vaste Posten + BLS-gecorrigeerd
+    // per categorie. De BLS gecorrigeerd-bedragen zijn omboekingen vanuit het
+    // gekoppelde potje (subcategorie = categorienaam) die een uitgave compenseren.
+    // Door die bij CAT op te tellen valt een goed-gefund potje weg op 0; alleen
+    // werkelijke tekorten/overschotten blijven zichtbaar.
+    const dashOverzicht = getDashboardOverzicht({
+      datumVan: periodeStart,
+      datumTot: periodeEind,
+      groepId: filterGroepId,
+      rekeningId: filterRekeningId,
+    });
+    // BLS-correctie alleen toepassen in het Budgetbeheer-profiel (interne
+    // waarde 'potjesbeheer'): daar zijn categorieën gefund vanuit een gekoppeld
+    // potje en wil je de omboeking-bij verrekenen tegen de uitgave. In
+    // Uitgavenbeheer/Handmatig is BLS niet ingericht en zou de correctie de
+    // cijfers vervuilen.
+    const isBudgetbeheer = inst.gebruikersProfiel === 'potjesbeheer';
+    const blsGecorrigeerdPerCat = new Map<string, number>();
+    if (isBudgetbeheer) {
+      for (const r of dashOverzicht.bls) {
+        blsGecorrigeerdPerCat.set(r.categorie, (blsGecorrigeerdPerCat.get(r.categorie) ?? 0) + r.gecorrigeerd);
+      }
+    }
+    const overigeUitsplitsing = dashOverzicht.cat
+      .filter(c => c.categorie !== 'Vaste Posten')
+      .map(c => {
+        const blsCorrectie = blsGecorrigeerdPerCat.get(c.categorie) ?? 0;
+        return {
+          categorie: c.categorie,
+          catTotaal: c.totaal,
+          blsCorrectie,
+          netto: Math.round((c.totaal + blsCorrectie) * 100) / 100,
+        };
+      })
+      .sort((a, b) => a.categorie.localeCompare(b.categorie, 'nl'));
+    const totaalSaldoVrij = overigeUitsplitsing.reduce((s, r) => s + r.netto, 0);
 
     return NextResponse.json({
       periodeLabel,
@@ -466,6 +570,10 @@ export function GET(req: NextRequest) {
       totaalInkomsten,
       totaalUitgaven,
       nogTeGaan,
+      totaalOverigeUitgaven,
+      totaalSaldoVrij,
+      overigeUitsplitsing,
+      budgetbeheerActief: isBudgetbeheer,
     } satisfies VastePostenOverzicht);
 
   } catch (err) {

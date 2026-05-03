@@ -347,6 +347,34 @@ html, body {
   text-align: right;
 }
 
+/* ── Vaste Posten status-marker ───────────────────────────────── */
+
+/* Status-streep aan de linkerkant van elke rij. 3px brede gekleurde balk
+   die op hover uitklapt naar 12px en een tooltip toont. Geen layout-shift
+   omdat de balk + tooltip absolute-positioned zijn binnen een 20px cell. */
+/* Hogere specificity zodat .table-wrapper tbody td niet overruled. */
+.table-wrapper tbody td.vp-marker-cell,
+td.vp-marker-cell {
+  position: relative;
+  width: 20px;
+  min-width: 20px;
+  max-width: 20px;
+  padding: 0;
+}
+.vp-marker {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 3px;
+  height: 100%;
+  background: var(--vp-marker-color, var(--border));
+  transition: width 0.18s ease;
+  cursor: help;
+  pointer-events: auto;
+}
+td.vp-marker-cell:hover .vp-marker { width: 12px; }
+/* Tooltip via native title-attribuut op .vp-marker — verschijnt buiten de
+   tabel-bounds zodat geen overlap met rij-content. Geen extra DOM. */
+
 /* ── Tabel ───────────────────────────────────────────────────── */
 
 .table-wrapper {

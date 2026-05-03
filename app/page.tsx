@@ -69,12 +69,14 @@ import type { TransactieMetCategorie } from '@/lib/transacties';
 import { kiesAutomatischeKleur } from '@/lib/kleuren';
 import MaandFilter from '@/components/MaandFilter';
 import { maakNaamChips, analyseerOmschrijvingen } from '@/features/shared/utils/naamChips';
+import { Calendar } from 'lucide-react';
 
 const MAAND_NAMEN = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
 
 interface BlsTransactie {
   id: number;
   datum: string | null;
+  originele_datum: string | null;
   naam_tegenpartij: string | null;
   omschrijving: string | null;
   bedrag: number | null;
@@ -110,6 +112,7 @@ interface CatRegel { categorie: string; totaal: number; subrijen: CatSubrij[]; }
 interface CatSubTrx {
   id: number;
   datum: string | null;
+  originele_datum: string | null;
   naam_tegenpartij: string | null;
   omschrijving: string | null;
   bedrag: number | null;
@@ -249,7 +252,13 @@ export default function DashboardPage() {
       setUniekeCategorieenDropdown(lookup?.uniekeCategorieen ?? []);
       if (groepenData.length > 0) setActieveGroepId(groepenData[0].id);
       setDashboardTabs(tabsData);
-      if (tabsData.length > 0) setActieveTabId(tabsData[0].id);
+      if (tabsData.length > 0) {
+        // Actieve tab uit instellingen lezen (gedeeld met Vaste Posten-pagina);
+        // valt terug op eerste tab als de opgeslagen tab niet meer bestaat.
+        const opgeslagenId = (instData as { actieveDashboardTabId?: number | null } | null)?.actieveDashboardTabId ?? null;
+        const gevonden = opgeslagenId != null ? tabsData.find(t => t.id === opgeslagenId) : null;
+        setActieveTabId(gevonden ? gevonden.id : tabsData[0].id);
+      }
       if (instData) {
         const inst = {
           blsTonen:         instData.dashboardBlsTonen      !== false,
@@ -603,10 +612,21 @@ export default function DashboardPage() {
       const subcatOpties = subs.filter(s => s.inActieveRegel).map(s => s.naam);
       const subcatGearchiveerd = subs.filter(s => !s.inActieveRegel).map(s => s.naam);
 
-      const trxMC = trx as unknown as TransactieMetCategorie;
+      // BLS/CAT-trx levert datum=effectief + originele_datum=import. Popup verwacht
+      // datum=import + datum_aanpassing=override → omzetten zodat de popup de
+      // datum-wijziging herkent en herstel-knop toont.
+      const trxMC = {
+        ...trx,
+        datum: trx.originele_datum ?? trx.datum,
+        datum_aanpassing: trx.originele_datum ? trx.datum : null,
+      } as unknown as TransactieMetCategorie;
       setPatronModal({ transactie: trxMC, toelichting: trx.toelichting ?? '', nieuweCat: categorie, catNieuw: false, nieuweCatRekeningId: '', subcategorie, subcatOpties, subcatGearchiveerd, subcatNieuw: false, naamChips, gekozenNaamChips, chips, gekozenWoorden, scope: trx.categorie_id != null ? 'alle' : 'enkel', bedragMin: trxMC.regel_bedrag_min ?? null, bedragMax: trxMC.regel_bedrag_max ?? null });
     } else {
-      const trxMC = trx as unknown as TransactieMetCategorie;
+      const trxMC = {
+        ...trx,
+        datum: trx.originele_datum ?? trx.datum,
+        datum_aanpassing: trx.originele_datum ? trx.datum : null,
+      } as unknown as TransactieMetCategorie;
       setPatronModal({ transactie: trxMC, toelichting: trx.toelichting ?? '', nieuweCat: '', catNieuw: false, nieuweCatRekeningId: '', subcategorie: '', subcatOpties: [], subcatNieuw: false, naamChips, gekozenNaamChips: [], chips, gekozenWoorden: [], scope: 'alle', bedragMin: trxMC.regel_bedrag_min ?? null, bedragMax: trxMC.regel_bedrag_max ?? null });
     }
   }
@@ -718,7 +738,11 @@ export default function DashboardPage() {
       {dashboardTabs.length > 1 && (
         <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--border)' }}>
           {dashboardTabs.map(t => (
-            <button key={t.id} onClick={() => setActieveTabId(t.id)}
+            <button key={t.id} onClick={() => {
+              setActieveTabId(t.id);
+              fetch('/api/instellingen', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ actieveDashboardTabId: t.id }) }).catch(() => {});
+              try { window.dispatchEvent(new CustomEvent('dashboard-tab-changed', { detail: { id: t.id } })); } catch { /* */ }
+            }}
               style={{
                 padding: '8px 20px', fontSize: 13, fontWeight: actieveTabId === t.id ? 600 : 400,
                 background: 'none', border: 'none', cursor: 'pointer',
@@ -881,7 +905,15 @@ export default function DashboardPage() {
                                   const catKleur = budgettenPotjes.find(bp => bp.naam === trx.categorie)?.kleur ?? 'var(--accent)';
                                   return (
                                     <tr key={trx.id} onClick={(e) => openCategoriePopupBls(trx, e)} onContextMenu={e => openContextMenu(e, `ctx-bls-sub-${trx.id}`, blsSubItems(trx))} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer' }}>
-                                      <td style={{ padding: '2px 10px', whiteSpace: 'nowrap' }}>{trx.datum ?? '—'}</td>
+                                      <td
+                                        style={{ padding: '2px 10px', whiteSpace: 'nowrap', color: trx.originele_datum ? 'var(--accent)' : undefined }}
+                                        title={trx.originele_datum ? `Origineel geboekt op ${trx.originele_datum}` : undefined}
+                                      >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                          <span>{trx.datum ?? '—'}</span>
+                                          {trx.originele_datum && <Calendar size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+                                        </div>
+                                      </td>
                                       <td style={{ padding: '2px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trx.naam_tegenpartij ?? '—'}</td>
                                       <td title={trx.omschrijving ?? undefined} style={{ padding: '2px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trx.omschrijving ?? '—'}</td>
                                       <td style={{ padding: '2px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: bedragKleur(trx.bedrag ?? 0) }}>{trx.bedrag != null ? formatBedrag(trx.bedrag) : '—'}</td>
@@ -1051,7 +1083,15 @@ export default function DashboardPage() {
                                           const trxAsBls = trx as unknown as BlsTransactie;
                                           return (
                                             <tr key={trx.id} onClick={(e) => openCategoriePopupBls(trxAsBls, e)} onContextMenu={e => openContextMenu(e, `ctx-cat-sub-trx-${trx.id}`, blsSubItems(trxAsBls))} style={{ borderBottom: '1px solid var(--border)', color: 'var(--text)', cursor: 'pointer' }}>
-                                              <td style={{ padding: '2px 10px', whiteSpace: 'nowrap' }}>{trx.datum ?? '—'}</td>
+                                              <td
+                                                style={{ padding: '2px 10px', whiteSpace: 'nowrap', color: trx.originele_datum ? 'var(--accent)' : undefined }}
+                                                title={trx.originele_datum ? `Origineel geboekt op ${trx.originele_datum}` : undefined}
+                                              >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                  <span>{trx.datum ?? '—'}</span>
+                                                  {trx.originele_datum && <Calendar size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
+                                                </div>
+                                              </td>
                                               <td style={{ padding: '2px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trx.naam_tegenpartij ?? '—'}</td>
                                               <td title={trx.omschrijving ?? undefined} style={{ padding: '2px 10px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{trx.omschrijving ?? '—'}</td>
                                               <td style={{ padding: '2px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: bedragKleur(trx.bedrag ?? 0) }}>{trx.bedrag != null ? formatBedrag(trx.bedrag) : '—'}</td>

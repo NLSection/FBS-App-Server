@@ -6,6 +6,7 @@ import { getRekeningGroep } from '@/lib/rekeningGroepen';
 export interface BlsTransactie {
   id: number;
   datum: string | null;
+  originele_datum: string | null; // import-datum als de transactie een aangepaste boekdatum heeft
   volgnummer: string | null;
   naam_tegenpartij: string | null;
   omschrijving: string | null;
@@ -93,6 +94,7 @@ function berekenBls(
   const maakDetail = (t: typeof transacties[number]): BlsTransactie => ({
     id: t.id,
     datum: t.datum_aanpassing ?? t.datum,
+    originele_datum: t.datum_aanpassing ? (t.datum ?? null) : null,
     volgnummer: t.volgnummer,
     naam_tegenpartij: t.naam_tegenpartij,
     omschrijving: [t.omschrijving_1, t.omschrijving_2, t.omschrijving_3].filter(Boolean).join(' '),
@@ -185,7 +187,11 @@ function berekenCat(
 
   for (const t of transacties) {
     if (!t.categorie) continue;
-    if (t.type === 'omboeking-af' || t.type === 'omboeking-bij') continue;
+    // Omboekingen alleen skippen als ze de default 'Omboekingen'-categorie nog
+    // hebben. Bij een expliciete categorisatie (Vaste Posten, Aangepast, etc.)
+    // respecteren we de keuze van de gebruiker — anders missen die transacties
+    // in de CAT-tabel terwijl ze wél als zodanig zijn ingesteld.
+    if ((t.type === 'omboeking-af' || t.type === 'omboeking-bij') && t.categorie === 'Omboekingen') continue;
     if (groepIbans && (!t.iban_bban || !groepIbans.has(t.iban_bban))) continue;
 
     const sub = t.subcategorie ?? '';

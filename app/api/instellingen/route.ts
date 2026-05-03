@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { getInstellingen, updateInstellingen } from '@/lib/instellingen';
 import { metWijziging } from '@/lib/wijziging';
+import { zonderLogging } from '@/lib/wijzigingContext';
 import { categoriseerTransacties } from '@/lib/categorisatie';
 import { DB_PATH } from '@/lib/db';
 
@@ -51,6 +52,21 @@ export async function PUT(request: NextRequest) {
   if (body.helpModus !== undefined) update.helpModus = Boolean(body.helpModus);
   if (body.uiZoom !== undefined) update.uiZoom = Number(body.uiZoom);
   if (body.thema !== undefined) update.thema = body.thema === 'licht' ? 'licht' : body.thema === 'systeem' ? 'systeem' : 'donker';
+  if (body.actieveDashboardTabId !== undefined) update.actieveDashboardTabId = body.actieveDashboardTabId === null ? null : Number(body.actieveDashboardTabId);
+
+  // Actieve dashboard-tab is UI-navigatie, geen "instelling" in wijziging-zin.
+  // Schrijf direct zonder log-entry zodat de wijziging-log niet volloopt bij
+  // elke tab-klik. Wanneer dit het enige veld in de update is — kort-sluiten.
+  const updateKeys = Object.keys(update);
+  if (updateKeys.length === 1 && updateKeys[0] === 'actieveDashboardTabId') {
+    try {
+      zonderLogging(() => updateInstellingen(update));
+      return new NextResponse(null, { status: 204 });
+    } catch (err) {
+      const bericht = err instanceof Error ? err.message : 'Databasefout.';
+      return NextResponse.json({ error: bericht }, { status: 500 });
+    }
+  }
 
   // Bouw beschrijving vóór de write zodat metWijziging hem aan de log-entries
   // kan koppelen. Vergelijk met huidige staat om alleen daadwerkelijke
