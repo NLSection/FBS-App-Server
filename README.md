@@ -17,7 +17,7 @@
 - [Versie-compatibiliteit](#versie-compatibiliteit)
 - [Beperkingen + roadmap](#beperkingen--roadmap)
 - [Troubleshooting](#troubleshooting)
-- [Repo-structuur (mirror van Dev)](#repo-structuur-mirror-van-dev)
+- [Wat er in deze repo staat](#wat-er-in-deze-repo-staat)
 
 ---
 
@@ -55,8 +55,8 @@
    ```
 
    De compose draait twee containers:
-   - `fbs-server` — de Next.js app + SQLite (host-mode netwerk op poort `3210`)
-   - `fbs-watchtower` — sidecar voor zero-touch image-updates (alleen bereikbaar via 127.0.0.1:8181)
+   - `FBS-Server` — de Next.js app + SQLite (host-mode netwerk op poort `3210`)
+   - `FBS-Watchtower` — sidecar voor zero-touch image-updates (alleen bereikbaar via 127.0.0.1:8181)
 
 3. **Container Manager → Project → Create**:
    - Project name: `fbs`
@@ -134,13 +134,28 @@ De bind-mounted `fbs.db` blijft staan; migraties draaien on-boot van de nieuwe c
 
 ### Specifieke versie pinnen
 
-`docker-compose.yml` gebruikt `image: ghcr.io/nlsection/fbs-app-server:latest` — pin op een tag voor reproduceerbaarheid:
+`docker-compose.yml` gebruikt `image: ghcr.io/nlsection/fbs-app-server:latest` — pin op een versie voor reproduceerbaarheid:
 
 ```yaml
-image: ghcr.io/nlsection/fbs-app-server:v0.5.10
+image: ghcr.io/nlsection/fbs-app-server:v0.9.0
 ```
 
-Beschikbare tags: zie [Releases](https://github.com/NLSection/FBS-App-Server/releases).
+Beschikbare versies: zie het **Packages**-blok op de repo-pagina, of
+[het pakket zelf](https://github.com/NLSection/FBS-App-Server/pkgs/container/fbs-app-server).
+
+### Kanalen (stabiel / test)
+
+Er zijn twee pakketten. Standaard hoor je op het stabiele te zitten:
+
+| Kanaal | Pakket | Wanneer |
+|---|---|---|
+| Stabiel | `ghcr.io/nlsection/fbs-app-server` | Altijd, tenzij je bewust meetest. Alleen versies die de test-ronde op Windows en macOS doorstaan hebben. |
+| Test | `ghcr.io/nlsection/fbs-app-server-test` | Vroege versies, kunnen stuk zijn. Draai dit niet op je enige database. |
+
+Beide pakketten hebben `:vX.Y.Z` en `:latest`. Wisselen van kanaal doe je door
+de `image:`-regel aan te passen en de container opnieuw aan te maken —
+Watchtower volgt altijd het pakket waarmee de container gestart is en stapt
+nooit uit zichzelf over.
 
 ---
 
@@ -163,7 +178,10 @@ Restore werkt identiek aan lokaal-modus: backup-bestand selecteren in Instelling
 - Bij upgraden eerst client + server beide naar dezelfde versie brengen, dan pas verbinden.
 - De Watchtower-knop in de banner houdt server automatisch in sync zodra je een nieuwe app-versie installeert.
 
-> Iedere FBS-App release ([Test](https://github.com/NLSection/FBS-App-Test/releases) / [Main](https://github.com/NLSection/FBS-App-Main/releases)) heeft een matchende [FBS-Server release](https://github.com/NLSection/FBS-App-Server/releases) met dezelfde versie-tag. Het Docker-image wordt automatisch gepublisht naar `ghcr.io/nlsection/fbs-app-server:vX.Y.Z` + `:latest`.
+> Iedere FBS-App release bevat Windows, macOS én server in dezelfde versie. De
+> desktop-bestanden staan bij de releases ([Test](https://github.com/NLSection/FBS-App-Test/releases)
+> / [Main](https://github.com/NLSection/FBS-App-Main/releases)); het server-image
+> staat als **package** bij de bijbehorende repo, met dezelfde `vX.Y.Z`.
 
 ---
 
@@ -184,34 +202,35 @@ Restore werkt identiek aan lokaal-modus: backup-bestand selecteren in Instelling
 | Symptoom | Oplossing |
 |----------|-----------|
 | Container start niet, log toont permission denied op `/data/fbs.db` | UID 1001 heeft geen schrijfrecht op de bind-mount. Zie [Snelstart stap 1](#snelstart-op-een-synology-nas-dsm-72). |
-| `/api/health` geeft 502/connection refused | Container niet gestart — check Container Manager → fbs-server → Log. Vaak een poort-conflict (3210 al in gebruik). |
+| `/api/health` geeft 502/connection refused | Container niet gestart — check Container Manager → FBS-Server → Log. Vaak een poort-conflict (3210 al in gebruik). |
 | Tauri "Test verbinding" → "Schema mismatch" | Client en server op andere versie. Update de oudste van de twee. |
-| "Server bijwerken"-knop in client doet niks | Watchtower-container niet bereikbaar — check `docker ps` of `fbs-watchtower` draait + `WATCHTOWER_HTTP_API_TOKEN` matcht in beide. |
+| "Server bijwerken"-knop in client doet niks | Watchtower-container niet bereikbaar — check `docker ps` of `FBS-Watchtower` draait + `WATCHTOWER_HTTP_API_TOKEN` matcht in beide. |
 | Container restart-loop | Bind-mount-pad bestaat niet of is read-only. Controleer DSM Shared Folder permissions. |
 
 Logs bekijken:
 ```sh
-docker compose -f /volume2/Docker/FBS/docker-compose.yml logs -f fbs-server
-docker compose -f /volume2/Docker/FBS/docker-compose.yml logs -f fbs-watchtower
+docker compose -f /volume2/Docker/FBS/docker-compose.yml logs -f fbs
+docker compose -f /volume2/Docker/FBS/docker-compose.yml logs -f watchtower
 ```
 
 ---
 
-## Repo-structuur (mirror van Dev)
+## Wat er in deze repo staat
 
-Deze repo is een **publieke mirror** van de relevante delen van het private `FBS-App-Dev`. Pushes komen van `scripts/sync-server.ps1 -Push` in de Dev-workspace; **niet handmatig op deze repo committen** (commits worden bij de volgende sync overschreven).
+Deze repo bevat **geen broncode** — alleen wat je nodig hebt om FBS-Server te
+draaien:
 
-Wel hier, niet in Dev:
-- `docker-compose.yml` (root) — distributie-compose voor eindgebruikers
-- `Dockerfile` (in `server/`) — build-recipe voor de image
+- `README.md` — deze handleiding
+- `docker-compose.yml` — het opstartrecept
+- `LICENSE`
 
-Niet hier (zit alleen in Dev):
-- `src-tauri/` — Tauri/Rust shell, irrelevant voor server
-- `scripts/` (Tauri build scripts), `SESSION.md`, `CLAUDE.md`, `ROADMAP.html`
+De app zelf wordt als **package** bij deze repo gepubliceerd (zie het
+Packages-blok op de repo-pagina). Dat image wordt lokaal gebouwd en
+gepubliceerd; er draait geen build in deze repo.
 
-CI/CD: `.github/workflows/docker.yml` bouwt multi-arch images (linux/amd64 + linux/arm64) en pusht ze naar GHCR. Triggers:
-- Push naar `main` → tag `:dev` (handmatig testen, geen rollout)
-- Tag `vX.Y.Z` push → tags `:latest` + `:vX.Y.Z` (productie-rollout, wat Watchtower pakt)
+**Niet handmatig op deze repo committen** — de handleiding en het opstartrecept
+worden vanuit de ontwikkel-workspace gepubliceerd en zouden overschreven
+worden.
 
 ---
 
