@@ -1,10 +1,90 @@
-# FBS-App-Server
+# FBS-Server
 
-**FBS-Server** is de zelf-gehoste tegenhanger van de FBS desktop-app. Het draait in Docker (bijvoorbeeld op een NAS) en host dezelfde Next.js-app + SQLite-database. Eén of meerdere FBS desktop-clients kunnen er via de **FBS-Server**-modus mee verbinden, zodat je financieel beheer multi-device beschikbaar is zonder broncode-aanpassingen of cloud-services.
+**Dezelfde financiële administratie, op al je apparaten. Op je eigen NAS.**
 
-> **Werking in het kort**: één database in `/data/fbs.db` op de NAS. De Tauri-client toont de UI maar fetcht alle data van de server. Bij wijzigingen blijft de NAS de single source of truth — laptop, tablet, andere PC zien meteen dezelfde data.
+FBS is een Nederlandstalig programma voor je eigen financiën: je leest de
+bestanden in die je bij je bank downloadt, en FBS maakt daar een overzicht van.
+Wat er binnenkwam, waar het heen ging, wat er nog moet komen en wat je nog te
+besteden hebt.
+
+FBS-Server is de versie die op je eigen NAS of server draait. Je administratie
+staat dan op één plek, en je laptop, je vaste computer en elk ander apparaat
+werken met diezelfde gegevens. Wie iets wijzigt, wijzigt het voor iedereen.
+
+![Het dashboard van FBS](assets/dashboard.png)
 
 ---
+
+## Wat FBS voor je doet
+
+**Je boekingen, ingedeeld.** Elke boeking krijgt een categorie en een
+subcategorie. Dat hoef je maar één keer per winkel of instantie te doen: FBS
+maakt er een regel van en deelt de volgende keer vanzelf in.
+
+![De transactielijst](assets/transacties.png)
+
+**Potjes en budgetten.** Geld dat je apart zet voor de auto, boodschappen of
+uitjes, of dat nu op een echte spaarrekening staat of alleen op papier. FBS
+houdt bij wat erin zit en wat je er deze maand nog van over hebt.
+
+![Potjes en budgetten](assets/potjes-budgetten.png)
+
+**Vaste lasten bewaken.** FBS weet welke posten elke maand horen te komen, laat
+zien welke al binnen zijn, en wijst je op bedragen die afwijken.
+
+![Vaste posten](assets/vaste-posten.png)
+
+**Terugkijken over langere tijd.** Maanden en jaren naast elkaar, per categorie
+of over je spaargeld.
+
+![Trends](assets/trends.png)
+
+---
+
+## Zo werkt het
+
+1. **Je bestand inlezen.** Download bij je bank de export van je rekeningen en
+   sleep hem in FBS. Rabobank en ABN AMRO worden herkend, in CSV, XML en ZIP.
+   Wat je al eerder inlas wordt overgeslagen.
+2. **Je boekingen indelen.** Klik een regel aan en geef hem een plek.
+3. **Van een keuze een regel maken.** De volgende import doet het dan zelf.
+4. **Je vaste lasten bewaken.** FBS houdt bij wat er binnen is en wat nog moet
+   komen.
+5. **Je potjes vullen.** Zet geld opzij voor doelen en zie wat er vrij te
+   besteden is.
+6. **Je maand bekijken en afsluiten**, zodat de cijfers achteraf niet meer
+   verschuiven.
+
+---
+
+## Wat je nodig hebt
+
+Een NAS of server waar Docker op draait, en op elk apparaat de gewone FBS-app.
+Die zet je in de instellingen op de server, en verder verandert er niets aan hoe
+je werkt.
+
+De app zelf haal je op bij [FBS-App-Client](../../../FBS-App-Client), voor
+Windows en macOS.
+
+Hieronder staat de volledige handleiding: opzetten op een Synology NAS of op een
+gewone Linux-machine, de app koppelen, bijwerken, back-ups en wat te doen als
+iets niet wil.
+
+---
+
+## Je gegevens blijven bij jou
+
+Er gaat niets naar een dienst van iemand anders. Geen account, geen koppeling
+met je bank, geen gegevens in een cloud. Je administratie staat in één bestand
+op je eigen NAS, in een map die je zelf kiest en zelf kunt inzien.
+
+FBS-Server heeft bewust geen inlogscherm en hoort daarom binnen je eigen netwerk
+te blijven. Wil je er van buitenaf bij, gebruik dan een VPN naar je eigen
+netwerk.
+
+---
+
+# Handleiding
 
 ## Inhoud
 
