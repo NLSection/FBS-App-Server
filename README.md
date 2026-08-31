@@ -29,6 +29,28 @@ houdt bij wat erin zit en wat je er deze maand nog van over hebt.
 
 ![Potjes en budgetten](assets/potjes-budgetten.png)
 
+**Balans Potjes: het verschil tussen de afspraak en de werkelijkheid.** In het
+echt betaal je niet netjes per potje. De boodschappen gaan van de rekening waar de
+pas bij hoort, de tankbeurt ook, en het geld dat je daarvoor opzij had gezet staat
+ergens anders. Na een paar maanden klopt geen enkel potje meer, en je merkt het
+pas als je spaarrekening tegenvalt. Deze tabel laat precies dat verschil zien, per
+potje.
+
+![De tabel Balans Potjes](assets/balans-potjes.png)
+
+Onder **Correctie richting** wijzen de pijlen van de rekening waar je vandaan
+betaalde naar de rekening waar het geld hoort te staan. **Totaal** is wat er deze
+periode vanaf de verkeerde kant is gegaan, **Gecorrigeerd** is wat je al hebt
+rechtgezet, en **Saldo** is wat er nog open staat.
+
+Rechtzetten kost twee handelingen. Klik op het bedrag, dan staat het op je
+klembord. Maak het bij je bank over tussen die twee rekeningen en zet de naam van
+het potje in de omschrijving, precies zoals hij in FBS heet. De volgende keer dat
+je inleest herkent FBS die overboeking, telt hem mee onder Gecorrigeerd, en loopt
+het saldo vanzelf terug. Staat het op nul, dan verschijnt er een groen vinkje: dat
+potje klopt weer. Je hoeft er niets voor bij te houden; de tabel komt uit dezelfde
+boekingen die je al hebt ingelezen en ingedeeld.
+
 **Vaste lasten bewaken.** FBS weet welke posten elke maand horen te komen, laat
 zien welke al binnen zijn, en wijst je op bedragen die afwijken.
 
