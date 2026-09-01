@@ -74,3 +74,30 @@ services:
       - WATCHTOWER_HTTP_API_PERIODIC_POLLS=false
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_NOTIFICATIONS=
+
+  # Kanaalwissel: zet de server op de andere lijn (test of stabiel).
+  #
+  # Watchtower hierboven haalt alleen een nieuwere versie op van de lijn waar de server al
+  # op staat; van lijn wisselen kan het niet. Dit hulpje wel: het kijkt of er een briefje in
+  # de gegevensmap ligt met daarin 'test' of 'stabiel', en zet de server dan opnieuw neer op
+  # het bijbehorende pakket. Dat briefje schrijft FBS zelf wanneer je in de instellingen van
+  # kanaal wisselt.
+  #
+  # Alles wat er iets anders in staat wordt genegeerd. Geen poort, geen wachtwoord, geen
+  # ingang van buitenaf: het hulpje kan maar een ding, met twee mogelijke uitkomsten.
+  #
+  # Laat je deze dienst weg, dan werkt de rest gewoon; alleen de knop om van kanaal te
+  # wisselen doet dan niets.
+  #
+  # Let op: de map met dit bestand wordt op dezelfde plek gekoppeld als op de NAS zelf,
+  # zodat de kenmerken van het project ongewijzigd blijven. Staat jouw project ergens
+  # anders, pas dan beide paden hieronder aan.
+  kanaalwissel:
+    image: docker:27-cli
+    container_name: FBS-Kanaalwissel
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /volume2/Docker/FBS:/volume2/Docker/FBS
+    working_dir: /volume2/Docker/FBS
+    entrypoint: ["/bin/sh", "/volume2/Docker/FBS/kanaalwissel.sh"]

@@ -254,10 +254,19 @@ Er zijn twee pakketten. Standaard hoor je op het stabiele te zitten:
 | Stabiel | `ghcr.io/nlsection/fbs-app-server` | Altijd, tenzij je bewust meetest. Alleen versies die de test-ronde op Windows en macOS doorstaan hebben. |
 | Test | `ghcr.io/nlsection/fbs-app-server-test` | Vroege versies, kunnen stuk zijn. Draai dit niet op je enige database. |
 
-Beide pakketten hebben `:vX.Y.Z` en `:latest`. Wisselen van kanaal doe je door
-de `image:`-regel aan te passen en de container opnieuw aan te maken —
-Watchtower volgt altijd het pakket waarmee de container gestart is en stapt
-nooit uit zichzelf over.
+Beide pakketten hebben `:vX.Y.Z` en `:latest`. Watchtower volgt altijd het pakket
+waarmee de container gestart is en stapt nooit uit zichzelf over: het haalt wel een nieuwere
+versie van dezelfde lijn, maar wisselt niet van lijn.
+
+**Sinds 0.9.8 kun je wisselen vanuit FBS zelf.** Kies je bij Instellingen een ander kanaal,
+dan verschijnt daar een knop om de server over te zetten. Dat werkt alleen als de dienst
+`kanaalwissel` uit het opstartrecept meedraait; die zet de server opnieuw neer op het
+pakket van het gekozen kanaal. Laat je die dienst weg, dan doet de knop niets en wissel je
+met de hand: de `image:`-regel aanpassen en de container opnieuw aanmaken.
+
+Overzetten kan alleen naar een lijn die **niet ouder** is dan wat er draait. Een oudere
+versie op nieuwere gegevens zetten kan die gegevens beschadigen, dus dat weigert FBS. Moet
+het toch, maak dan eerst een reservekopie en pas het opstartrecept met de hand aan.
 
 ---
 
