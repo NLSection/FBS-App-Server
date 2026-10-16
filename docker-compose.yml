@@ -8,9 +8,13 @@ services:
     ports:
       # FBS zoekt op je netwerk naar poort 8099. Zet deze poort ook open in de firewall van je NAS.
       - "8099:8080"
+    environment:
+      # De server bewaart de gedeelde administraties in de map gegevens naast dit bestand en maakt die zelf aan
+      # (onversleuteld: zet de map op een afgeschermde plek en versleutel je backups).
+      FBS_SYNC_DATA: /fbs/gegevens
     volumes:
-      # Hier bewaart de server de gedeelde administraties (onversleuteld: zet de map op een afgeschermde plek
-      # en versleutel je backups). De beheerderscode staat bij elke start in het logboek van de container.
-      - ./gegevens:/data
+      # De map van dit bestand; die bestaat altijd, ook als je Docker een map niet zelf laat aanmaken.
+      # De beheerderscode staat bij elke start in het logboek van de container; beheren kan op http://<NAS>:8099/beheer.
+      - .:/fbs
     # Nodig: na bijwerken vanuit FBS stopt de server en start Docker hem opnieuw.
     restart: unless-stopped
