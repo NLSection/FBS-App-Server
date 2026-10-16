@@ -1,0 +1,16 @@
+# FBS-Server: synchronisatiedienst voor administraties die je tussen meerdere apparaten deelt.
+# Zet dit bestand in een eigen map op je NAS of server en start het met: docker compose up -d
+# Bijwerken gaat daarna vanuit FBS (Instellingen, tabblad Systeem, bij Verbinding met de server); het pakket hoef je niet zelf te vernieuwen.
+services:
+  fbs-server:
+    image: ghcr.io/nlsection/fbs-server:latest
+    container_name: FBS-Server
+    ports:
+      # FBS zoekt op je netwerk naar poort 8099. Zet deze poort ook open in de firewall van je NAS.
+      - "8099:8080"
+    volumes:
+      # Hier bewaart de server de gedeelde administraties (onversleuteld: zet de map op een afgeschermde plek
+      # en versleutel je backups). De beheerderscode staat bij elke start in het logboek van de container.
+      - ./gegevens:/data
+    # Nodig: na bijwerken vanuit FBS stopt de server en start Docker hem opnieuw.
+    restart: unless-stopped
