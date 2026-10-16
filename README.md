@@ -5,7 +5,8 @@
 FBS-Server is een synchronisatiedienst voor [FBS](https://fbs.section-labs.nl). Gebruik je FBS op
 bijvoorbeeld je pc en je laptop, dan houdt FBS-Server een gedeelde administratie op allebei
 gelijk. Elk apparaat werkt op een eigen kopie; FBS-Server bewaart de wijzigingen en geeft ze door.
-Je werkt zelf gewoon in FBS: de server heeft geen eigen scherm.
+Je werkt zelf gewoon in FBS; voor het beheer (apparaten, koppelcodes, beheerders) heeft de server een eigen
+beheerpagina.
 
 FBS-Server draait in je eigen thuisnetwerk, op een apparaat dat altijd aan staat, zoals een NAS.
 Er gaat niets naar een dienst van iemand anders.
@@ -70,7 +71,8 @@ Synology-pakket staat dezelfde pagina in FBS-Server in het hoofdmenu van DSM, zo
 ## Beheerderscode en koppelcodes
 
 Bij elke start zet FBS-Server een beheerderscode in het logboek van de container (bij het Synology-pakket: in FBS-Server in het hoofdmenu van DSM (alleen voor beheerders)). Die heb je nodig
-voor Server beheren in FBS. Je leest het logboek in de Docker-beheerder van je NAS, of met
+om je aan te melden op de beheerpagina, of in FBS als beheerder (om een administratie te delen of een koppelcode
+te maken). Je leest het logboek in de Docker-beheerder van je NAS, of met
 `docker logs FBS-Server`.
 
 In hetzelfde logboek staat per gedeelde administratie een koppelcode voor een nieuw apparaat, 24
