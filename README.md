@@ -46,7 +46,8 @@ Heb je een Synology met DSM 7, dan kan het ook als pakket:
 4. Verder bij stap 5 hierboven.
 
 De beheerderscode en de koppelcodes staan dan in FBS-Server in het hoofdmenu van DSM (alleen voor beheerders). Neem de gedeelde map die je koos mee in je
-backups (bijvoorbeeld met Hyper Backup): in de submap FBS-Server staan de gedeelde administraties.
+backups (bijvoorbeeld met Hyper Backup) en zet daarbij de versleuteling aan: in de submap FBS-Server staan de gedeelde
+administraties, onversleuteld.
 
 ---
 
@@ -76,7 +77,8 @@ te maken). Je leest het logboek in de Docker-beheerder van je NAS, of met
 `docker logs FBS-Server`.
 
 In hetzelfde logboek staat per gedeelde administratie een koppelcode voor een nieuw apparaat, 24
-uur geldig. Die heb je alleen nodig als je geen werkend apparaat en geen herstelcode meer hebt.
+uur geldig. Die heb je alleen nodig als je geen werkend apparaat en geen herstelcode meer hebt. Een koppelcode werkt
+voor één apparaat; voor het volgende maak je op de beheerpagina een nieuwe.
 
 ---
 
@@ -84,7 +86,7 @@ uur geldig. Die heb je alleen nodig als je geen werkend apparaat en geen herstel
 
 FBS-Server bewaart de gedeelde administraties in de map `gegevens` naast het bestand
 docker-compose.yml (bij het Synology-pakket in de submap FBS-Server van de gedeelde map die je koos), onversleuteld. Zet de map daarom op een plek waar alleen jij bij kunt, en
-versleutel je backups ervan.
+versleutel je backups ervan (bij Hyper Backup: de versleuteling aanzetten bij het maken van de backuptaak).
 
 Met een backup van die map haal je je gedeelde administraties terug, ook als je al je apparaten
 kwijt bent: start FBS-Server opnieuw met die map en sluit een nieuw apparaat aan met je
