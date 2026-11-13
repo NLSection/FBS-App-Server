@@ -1,6 +1,7 @@
 # FBS-Server: synchronisatiedienst voor administraties die je tussen meerdere apparaten deelt.
 # Zet dit bestand in een eigen map op je NAS of server en start het met: docker compose up -d
-# Bijwerken gaat daarna vanuit FBS (Instellingen, tabblad Systeem, bij Verbinding met de server); het pakket hoef je niet zelf te vernieuwen.
+# Bijwerken gaat daarna vanuit FBS (Instellingen, tabblad Systeem, bij Verbinding met de server). Alleen bij een uitgave met een
+# nieuwe Node (dat staat in de notities) haal je het pakket zelf opnieuw op: docker compose pull en daarna docker compose up -d.
 services:
   fbs-server:
     image: ghcr.io/nlsection/fbs-server:latest
