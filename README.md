@@ -55,7 +55,13 @@ administraties, onversleuteld.
 
 Dat doet FBS voor je. Heeft FBS een nieuwere versie van FBS-Server bij zich, dan krijg je een
 melding, en werk je de server bij met één knop bij Verbinding met de server. Het pakket zelf hoef
-je niet te vernieuwen.
+je daarvoor niet te vernieuwen.
+
+Eén uitzondering: Node, het programma waarop FBS-Server draait. Dat werkt FBS niet bij. Komt er een
+uitgave van FBS-Server met een nieuwe Node (dat staat dan in de notities), haal dan bij Docker het
+nieuwe pakket op en start opnieuw: `docker compose pull` en daarna `docker compose up -d`, in de map
+met `docker-compose.yml`. Bij het Synology-pakket gebruikt FBS-Server de Node.js van Synology; werk
+die bij in het Pakketcentrum als Synology een nieuwe versie aanbiedt.
 
 ---
 
